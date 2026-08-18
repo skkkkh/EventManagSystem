@@ -1,0 +1,43 @@
+@model EventManagementSystem.Api.DTOs.CreateEventDto
+
+@{
+    ViewData["Title"] = "Create Event";
+}
+
+<h1>Create Event</h1>
+
+<form asp-action="Create" method="post">
+    <div>
+        <label>Title</label>
+        <input asp-for="Title" />
+    </div>
+    <div>
+        <label>Description</label>
+        <textarea asp-for="Description"></textarea>
+    </div>
+    <div>
+        <label>Location</label>
+        <input asp-for="Location" />
+    </div>
+    <div>
+        <label>Start</label>
+        <input asp-for="StartDateTime" type="datetime-local" />
+    </div>
+    <div>
+        <label>End</label>
+        <input asp-for="EndDateTime" type="datetime-local" />
+    </div>
+    <div>
+        <label>Capacity</label>
+        <input asp-for="Capacity" />
+    </div>
+    <div>
+        <label>Event Template</label>
+        <select asp-for="EventTemplateId" asp-items="@(ViewBag.Templates as Microsoft.AspNetCore.Mvc.Rendering.SelectList)">
+            <option value="">-- select --</option>
+        </select>
+    </div>
+    <div>
+        <button type="submit">Create</button>
+    </div>
+</form>

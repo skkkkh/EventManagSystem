@@ -1,0 +1,48 @@
+@model EventManagementSystem.Api.ViewModels.DashboardViewModel
+
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<h1>Welcome, @Model.User.Name</h1>
+<p style="color:#666;">@Model.User.Email &middot; @Model.User.Role</p>
+
+<div class="card">
+    <h2>Notifications</h2>
+
+    @if (!Model.Notifications.Any())
+    {
+        <p>No notifications yet.</p>
+    }
+    else
+    {
+        foreach (var n in Model.Notifications)
+        {
+            <div class="card @(n.IsRead ? "notification-read" : "notification-unread")">
+                <strong>@n.Type</strong>
+                <p>@n.Message</p>
+                <small>@n.CreatedAt.ToLocalTime().ToString("g")</small>
+            </div>
+        }
+    }
+</div>
+
+<div class="card">
+    <h2>Recommended for you</h2>
+
+    @if (!Model.Recommendations.Any())
+    {
+        <p>No recommendations yet — check back once more events are published.</p>
+    }
+    else
+    {
+        foreach (var r in Model.Recommendations)
+        {
+            <div class="card">
+                <strong>@r.Event.Title</strong>
+                <p>@r.Event.Description</p>
+                <small>@r.Event.StartDateTime.ToLocalTime().ToString("g") &middot; @r.Reason</small>
+            </div>
+        }
+    }
+</div>

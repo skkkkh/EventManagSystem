@@ -1,0 +1,46 @@
+﻿@model EventManagementSystem.Api.ViewModels.CheckoutViewModel
+
+@{
+    ViewData["Title"] = "Checkout";
+}
+
+<h1>Checkout</h1>
+
+<div class="card">
+    <h2>Order summary</h2>
+    <p><strong>Ticket:</strong> @Model.TicketTypeName</p>
+    <p><strong>Quantity:</strong> @Model.Booking.Quantity</p>
+    <p><strong>Total:</strong> @Model.Booking.TotalAmount.ToString("C")</p>
+    <p><strong>Status:</strong> @Model.Booking.Status</p>
+</div>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="card" style="border-left:4px solid #c0392b;">
+        <ul>
+            @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+            {
+                <li>@error.ErrorMessage</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="card">
+    <h2>Payment</h2>
+
+    <form asp-action="Checkout" method="post">
+        <input type="hidden" asp-for="Form.BookingId" />
+        <div>
+            <label>Payment method</label>
+            <select asp-for="Form.PaymentMethod">
+                <option value="Card">Card</option>
+                <option value="PayPal">PayPal</option>
+                <option value="BankTransfer">Bank transfer</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit">Pay @Model.Booking.TotalAmount.ToString("C")</button>
+        </div>
+    </form>
+</div>

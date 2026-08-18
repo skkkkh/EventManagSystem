@@ -1,0 +1,23 @@
+﻿@model EventManagementSystem.Api.ViewModels.ConfirmationViewModel
+
+@{
+    ViewData["Title"] = "Booking Confirmed";
+}
+
+<h1>Booking confirmed</h1>
+
+<div class="card">
+    <p><strong>Booking #</strong>@Model.Booking.Id</p>
+    <p><strong>Ticket:</strong> @Model.TicketTypeName</p>
+    <p><strong>Quantity:</strong> @Model.Booking.Quantity</p>
+    <p><strong>Total paid:</strong> @Model.Booking.TotalAmount.ToString("C")</p>
+    <p><strong>Status:</strong> @Model.Booking.Status</p>
+
+    @if (Model.Payment != null)
+    {
+        <p><strong>Transaction ref:</strong> @Model.Payment.TransactionReference</p>
+        <p><strong>Paid on:</strong> @Model.Payment.CreatedAt.ToLocalTime().ToString("g")</p>
+    }
+</div>
+
+<p><a href="/">Back to home</a></p>

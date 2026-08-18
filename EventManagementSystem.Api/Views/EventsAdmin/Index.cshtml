@@ -1,0 +1,18 @@
+@model IEnumerable<EventManagementSystem.Api.DTOs.EventDto>
+
+@{
+    ViewData["Title"] = "Events";
+}
+
+<h1>Events</h1>
+
+<p><a asp-action="Create">Create new event</a> | <a asp-action="Templates">Manage Templates</a></p>
+
+@foreach (var e in Model)
+{
+    <div class="card">
+        <h3>@e.Title</h3>
+        <p>@e.Description</p>
+        <small>@e.StartDateTime.ToLocalTime().ToString("g") - @e.EndDateTime.ToLocalTime().ToString("g")</small>
+    </div>
+}

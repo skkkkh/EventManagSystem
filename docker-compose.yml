@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  api:
+    build:
+      context: ./EventManagementSystem.Api
+      dockerfile: Dockerfile
+    image: eventmanagementsystem_api:latest
+    ports:
+      - "5003:5000" # maps container http port 5000 to host 5003 (matches local dev https port mapping)
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on: []
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: eventmanagementsystem_frontend:latest
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+# NOTE: Database and frontend services are not defined here. The CS teammate owns
+# the database and frontend docker configuration. Add services for 'db' (sqlite
+# is file-based, so use bind mounts or replace with a server DB) and 'frontend'
+# as required by your team. Do NOT invent their configuration without team
+# agreement.
