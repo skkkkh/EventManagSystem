@@ -4,7 +4,7 @@ namespace EventManagementSystem.Api.DTOs;
 
 public record UserDto(int Id, string Name, string Email, string Role = "User", DateTime? RegistrationDate = null)
 {
-    public static UserDto FromEntity(User u) => new(u.Id, u.Name, u.Email, u.Role, u.RegistrationDate);
+    public static UserDto FromEntity(User u) => new(u.Id, u.Name, u.Email ?? string.Empty, u.Role, u.RegistrationDate);
 }
 
 public record NotificationDto(int Id, int UserId, string Message, DateTime CreatedAt, bool IsRead, NotificationType Type)

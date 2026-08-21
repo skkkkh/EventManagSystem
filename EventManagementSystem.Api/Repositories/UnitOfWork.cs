@@ -80,6 +80,12 @@ public class UnitOfWork : IUnitOfWork
         return await _context.SaveChangesAsync();
     }
 
+    public async Task<int> CompleteAsync()
+    {
+        // Alias for SaveChangesAsync to match existing callsites
+        return await SaveChangesAsync();
+    }
+
     public void Dispose()
     {
         _context.Dispose();

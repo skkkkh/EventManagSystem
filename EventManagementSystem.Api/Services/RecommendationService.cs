@@ -38,7 +38,8 @@ public class RecommendationService : IRecommendationService
             var registeredEvents = (await _uow.Events.FindAsync(e => registeredEventIds.Contains(e.Id))).ToList();
             foreach (var re in registeredEvents)
             {
-                preferredTemplateIds.Add(re.EventTemplateId);
+                if (re.EventTemplateId.HasValue)
+                    preferredTemplateIds.Add(re.EventTemplateId.Value);
             }
         }
 
@@ -49,7 +50,7 @@ public class RecommendationService : IRecommendationService
         var scored = upcoming.Select(e =>
         {
             int score = 0;
-            if (preferredTemplateIds.Contains(e.EventTemplateId)) score += 10;
+            if (e.EventTemplateId.HasValue && preferredTemplateIds.Contains(e.EventTemplateId.Value)) score += 10;
 
             var text = (e.Title + " " + (e.Description ?? string.Empty)).ToLowerInvariant();
             var tokens = new HashSet<string>(text.Split(new[] { ' ', '.', ',', ';', ':', '-', '_' }, StringSplitOptions.RemoveEmptyEntries));
@@ -74,7 +75,7 @@ public class RecommendationService : IRecommendationService
             return fallback;
         }
 
-        var result = scored.Select(s => new RecommendationDto(EventDto.FromEntity(s.Event), preferredTemplateIds.Contains(s.Event.EventTemplateId) ? "Because you attended similar events" : (s.Overlap > 0 ? "Because it matches your interests" : "Upcoming event"))).ToList();
+        var result = scored.Select(s => new RecommendationDto(EventDto.FromEntity(s.Event), (s.Event.EventTemplateId.HasValue && preferredTemplateIds.Contains(s.Event.EventTemplateId.Value)) ? "Because you attended similar events" : (s.Overlap > 0 ? "Because it matches your interests" : "Upcoming event"))).ToList();
 
         return result;
     }

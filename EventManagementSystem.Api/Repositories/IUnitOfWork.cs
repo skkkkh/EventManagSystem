@@ -30,4 +30,7 @@ public interface IUnitOfWork : IDisposable
 
     // Save all changes
     Task<int> SaveChangesAsync();
+
+    // Backwards-compatible alias used in some controllers/handlers
+    Task<int> CompleteAsync();
 }

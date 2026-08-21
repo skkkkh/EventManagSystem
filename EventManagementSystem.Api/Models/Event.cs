@@ -2,12 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace EventManagementSystem.Api.Models;
 
-/// <summary>
-/// The central entity of the whole system. Registration, Booking, and
-/// Payment (owned by the CS student) all foreign-key into this table,
-/// so its shape needs to be agreed on by the whole team before anyone
-/// else's migrations can be written.
-/// </summary>
 public class Event
 {
     public int Id { get; set; }
@@ -31,8 +25,8 @@ public class Event
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    // FK to the template this event was created from
-    public int EventTemplateId { get; set; }
+    // Made optional so the database/API won't crash if it's missing
+    public int? EventTemplateId { get; set; }
     public EventTemplate? EventTemplate { get; set; }
 
     // Values for the template's custom fields, specific to this event

@@ -12,15 +12,9 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ==================================================
-// MVC + API
-// ==================================================
 builder.Services.AddControllersWithViews();
 builder.Services.AddEndpointsApiExplorer();
 
-// ==================================================
-// Swagger
-// ==================================================
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
@@ -59,18 +53,12 @@ builder.Services.AddSwaggerGen(options =>
         });
 });
 
-// ==================================================
-// Entity Framework Core
-// ==================================================
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(
         builder.Configuration.GetConnectionString("DefaultConnection")
         ?? "Data Source=eventmanagement.db"
     ));
 
-// ==================================================
-// ASP.NET Core Identity
-// ==================================================
 builder.Services
     .AddIdentity<User, IdentityRole<int>>(options =>
     {
@@ -84,12 +72,10 @@ builder.Services
     .AddEntityFrameworkStores<AppDbContext>()
     .AddDefaultTokenProviders();
 
-// ==================================================
-// JWT
-// ==================================================
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "EventManagementSystem_SuperSecretKey_2026_ChangeThis";
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "EventManagementSystem";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "EventManagementSystemUsers";
+
 builder.Services
     .AddAuthentication(options =>
     {
@@ -100,13 +86,10 @@ builder.Services
     {
         options.ForwardDefaultSelector = context =>
         {
-            // API requests use JWT
             if (context.Request.Path.StartsWithSegments("/api"))
             {
                 return JwtBearerDefaults.AuthenticationScheme;
             }
-
-            // MVC requests use authentication cookie
             return "MvcCookie";
         };
     })
@@ -118,13 +101,10 @@ builder.Services
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-
-            IssuerSigningKey =
-                new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            RoleClaimType = "role"
         };
     })
     .AddCookie("MvcCookie", options =>
@@ -136,38 +116,20 @@ builder.Services
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
     });
 
-// ==================================================
-// Authorization
-// ==================================================
 builder.Services.AddAuthorization();
-
-// ==================================================
-// Repository / Unit of Work
-// ==================================================
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
-
-// ==================================================
-// MediatR
-// ==================================================
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
-
-// ==================================================
-// Recommendation Service
-// ==================================================
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
 
-// ==================================================
-// CORS
-// ==================================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        // Allow localhost during development plus an optional configured frontend URL
         var allowedOrigins = new[]
         {
             "http://localhost:5173",
+            "http://localhost:5174",
             builder.Configuration["FrontendUrl"] ?? "https://your-deployed-frontend-domain"
         };
 
@@ -178,63 +140,38 @@ builder.Services.AddCors(options =>
     });
 });
 
-// ==================================================
-// Build
-// ==================================================
 var app = builder.Build();
 
-// ==================================================
-// Swagger
-// ==================================================
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "Event Management System API v1");
 });
 
-// ==================================================
-// Middleware
-// ==================================================
-
-// CORS must be first so browser preflight OPTIONS requests bypass redirection
 app.UseCors("AllowFrontend");
-
-// Optional for local dev: comment this out if it forces HTTPS redirects on port 5080
-// app.UseHttpsRedirection();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
-// ==================================================
-// Controllers
-// ==================================================
 app.MapControllers();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-// ==================================================
-// Database
-// ==================================================
+// Seed database and ready-to-test accounts for evaluators/buyers
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     var db = services.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
-    await SeedRolesAsync(services);
+    await SeedRolesAndDefaultUsersAsync(services);
+    await SeedEventDataAsync(db);
 }
 
-// ==================================================
-// Run
-// ==================================================
 app.Run();
 
-// ==================================================
-// Role Seeding
-// ==================================================
-static async Task SeedRolesAsync(IServiceProvider services)
+static async Task SeedRolesAndDefaultUsersAsync(IServiceProvider services)
 {
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole<int>>>();
+    var userManager = services.GetRequiredService<UserManager<User>>();
     string[] roles = { "Admin", "Organizer", "Attendee" };
 
     foreach (var role in roles)
@@ -243,5 +180,42 @@ static async Task SeedRolesAsync(IServiceProvider services)
         {
             await roleManager.CreateAsync(new IdentityRole<int>(role));
         }
+    }
+
+    var adminEmail = "admin@ems.com";
+    if (await userManager.FindByEmailAsync(adminEmail) == null)
+    {
+        var admin = new User { UserName = adminEmail, Email = adminEmail, Name = "System Admin", Role = "Admin", RegistrationDate = DateTime.UtcNow };
+        var res = await userManager.CreateAsync(admin, "Admin123!");
+        if (res.Succeeded) await userManager.AddToRoleAsync(admin, "Admin");
+    }
+}
+
+static async Task SeedEventDataAsync(AppDbContext db)
+{
+    if (!await db.Set<EventTemplate>().AnyAsync())
+    {
+        db.Set<EventTemplate>().Add(new EventTemplate
+        {
+            Id = 1,
+            Name = "Standard Event Template",
+            Description = "Default system-seeded template for events"
+        });
+        await db.SaveChangesAsync();
+    }
+
+    if (!await db.Events.AnyAsync())
+    {
+        db.Events.Add(new Event
+        {
+            Title = "Tech Innovation Summit 2026",
+            Description = "An introductory summit exploring modern AI and web architectures.",
+            StartDateTime = DateTime.UtcNow.AddDays(10),
+            EndDateTime = DateTime.UtcNow.AddDays(10).AddHours(2),
+            Location = "Main Auditorium",
+            Capacity = 100,
+            EventTemplateId = 1
+        });
+        await db.SaveChangesAsync();
     }
 }

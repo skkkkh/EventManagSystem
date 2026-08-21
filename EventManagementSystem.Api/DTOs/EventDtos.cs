@@ -63,7 +63,7 @@ public class EventDto
     public DateTime EndDateTime { get; set; }
     public int Capacity { get; set; }
     public bool IsPublished { get; set; }
-    public int EventTemplateId { get; set; }
+    public int? EventTemplateId { get; set; }
     public string? EventTemplateName { get; set; }
     public List<CustomFieldValueDto> FieldValues { get; set; } = new();
 
