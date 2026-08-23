@@ -34,6 +34,11 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
             if (ticketType is null)
                 throw new KeyNotFoundException("Ticket type not found.");
 
+            // Prevent bookings for events that have already ended
+            var ev = await _uow.Events.GetByIdAsync(ticketType.EventId);
+            if (ev != null && ev.EndDateTime < DateTime.UtcNow)
+                throw new InvalidOperationException("This event has ended and is no longer accepting bookings");
+
             if (registration.EventId != ticketType.EventId)
                 throw new InvalidOperationException("Registration and ticket type belong to different events.");
 
@@ -51,12 +56,29 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 TicketTypeId = dto.TicketTypeId,
                 Quantity = dto.Quantity,
                 TotalAmount = totalAmount,
-                Status = BookingStatus.Pending,
+                Status = dto.IsPaid ? BookingStatus.Confirmed : BookingStatus.Pending,
+                IsPaid = dto.IsPaid,
                 BookedAt = DateTime.UtcNow
             };
 
             await _uow.Bookings.AddAsync(booking);
             await _uow.SaveChangesAsync();
+
+            // If paid, create a simple Payment record
+            if (dto.IsPaid)
+            {
+                var payment = new Payment
+                {
+                    Booking = booking,
+                    Amount = booking.TotalAmount,
+                    PaymentMethod = "Card (mock)",
+                    Status = PaymentStatus.Completed,
+                    TransactionReference = Guid.NewGuid().ToString(),
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _uow.Payments.AddAsync(payment);
+            }
 
             return new BookingResponseDto(
                 booking.Id,
@@ -65,7 +87,8 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 booking.Quantity,
                 booking.TotalAmount,
                 booking.Status.ToString(),
-                booking.BookedAt
+                booking.BookedAt,
+                booking.IsPaid
             );
         }
         finally

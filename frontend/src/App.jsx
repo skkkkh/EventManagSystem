@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { eventService } from './eventService';
+import { parseUtcString, formatEventDateTime, toLocalInputValue } from './utils/dateUtils';
 import { authService } from './authService';
 
 const colors = {
@@ -51,6 +52,8 @@ function LandingPage() {
         </p>
       </div>
 
+         
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', width: '100%', maxWidth: '700px' }}>
         <Link to="/events" className="es-choice-card" style={{ textDecoration: 'none', background: colors.card, padding: '36px 28px', borderRadius: '20px', border: `2px solid ${colors.roseSoft}`, textAlign: 'center', display: 'block' }}>
           <div style={{ fontSize: '36px', marginBottom: '16px' }}>🎟️</div>
@@ -73,11 +76,18 @@ function LandingPage() {
 }
 
 function EventCard({ event, onRegister }) {
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [loadingCheckout, setLoadingCheckout] = useState(false);
   const title = event.title || event.name;
   const rawDate = event.date || event.startDateTime || event.StartDateTime;
-  const dateObj = rawDate ? new Date(rawDate) : null;
-  const day = dateObj && !isNaN(dateObj) ? dateObj.getDate() : '—';
-  const month = dateObj && !isNaN(dateObj) ? dateObj.toLocaleDateString(undefined, { month: 'short' }).toUpperCase() : 'TBA';
+  const dateObj = parseUtcString(rawDate);
+  const day = dateObj ? dateObj.getDate() : '—';
+  const month = dateObj ? dateObj.toLocaleDateString(undefined, { month: 'short' }).toUpperCase() : 'TBA';
 
   return (
     <div className="es-card" style={{ background: colors.card, borderRadius: '18px', boxShadow: '0 6px 20px rgba(127,19,48,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -87,23 +97,116 @@ function EventCard({ event, onRegister }) {
             <span style={{ fontSize: '18px', fontWeight: 700, fontFamily: fontDisplay }}>{day}</span>
             <span style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{month}</span>
           </div>
-          <h4 style={{ margin: '4px 0 0 0', color: colors.ink, fontFamily: fontDisplay, fontSize: '19px', fontWeight: 600, lineHeight: 1.3 }}>
-            {title}
-          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h4 style={{ margin: 0, color: colors.ink, fontFamily: fontDisplay, fontSize: '19px', fontWeight: 600, lineHeight: 1.2 }}>{title}</h4>
+              {/* Category + Expired badges */}
+              <div style={{ marginLeft: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ background: colors.roseSoft, color: colors.wine, padding: '4px 8px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, height: '24px', display: 'inline-flex', alignItems: 'center' }}>{event.category || event.Category || 'Other'}</div>
+                {(event.isExpired || event.IsExpired) && (
+                  <div style={{ background: '#E5E7EB', color: '#6B7280', padding: '4px 8px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, height: '24px', display: 'inline-flex', alignItems: 'center' }}>Expired</div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
         <p style={{ color: colors.muted, fontFamily: fontBody, fontSize: '14px', lineHeight: 1.65, margin: 0, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '68px' }}>
           {event.description}
         </p>
+        <div style={{ marginTop: '12px', fontSize: '13px', color: colors.ink, display: 'flex', flexDirection: 'column', gap: '8px', lineHeight: 1.4 }}>
+          {/* Date */}
+          {(() => {
+            const startRaw = event.startDateTime || event.StartDateTime;
+            const endRaw = event.endDateTime || event.EndDateTime;
+            const startFmt = formatEventDateTime(startRaw);
+            const endFmt = formatEventDateTime(endRaw);
+            const end = endRaw ? new Date(endRaw) : null;
+            const dateStr = startFmt.dateStr;
+            const timeStr = (startRaw && endRaw) ? `${startFmt.timeStr} — ${endFmt.timeStr}` : (startRaw ? startFmt.timeStr : 'TBA');
+            const location = event.location || event.Location || 'TBA';
+            const price = (event.price ?? event.Price) ? `$${(event.price ?? event.Price).toFixed(2)}` : 'Free';
+            const seatsRemaining = event.seatsRemaining ?? event.SeatsRemaining ?? '—';
+            const capacityVal = event.capacity ?? event.Capacity ?? '—';
+
+            return (
+              <>
+                <div style={{ color: colors.muted, display: 'flex', gap: '8px', alignItems: 'center' }}>📅 <span style={{ marginLeft: '6px' }}>{dateStr}</span></div>
+                <div style={{ color: colors.muted, display: 'flex', gap: '8px', alignItems: 'center' }}>🕐 <span style={{ marginLeft: '6px' }}>{timeStr}</span></div>
+                <div style={{ color: colors.muted, display: 'flex', gap: '8px', alignItems: 'center' }}>📍 <span style={{ marginLeft: '6px' }}>{location}</span></div>
+                <div style={{ color: colors.muted, display: 'flex', gap: '8px', alignItems: 'center' }}>🎟️ <span style={{ marginLeft: '6px' }}>{price}</span></div>
+                <div style={{ color: colors.muted, display: 'flex', gap: '8px', alignItems: 'center' }}>💺 <span style={{ marginLeft: '6px' }}>{seatsRemaining} remaining of {capacityVal}</span></div>
+              </>
+            );
+          })()}
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: colors.bg, marginLeft: '-11px', flexShrink: 0 }} />
         <div style={{ flex: 1, borderTop: `2px dashed ${colors.roseSoft}` }} />
         <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: colors.bg, marginRight: '-11px', flexShrink: 0 }} />
       </div>
-      <div style={{ padding: '18px 24px 24px' }}>
-        <button onClick={() => onRegister(title)} className="es-register-btn" style={{ width: '100%', padding: '12px', background: colors.wine, color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontFamily: fontBody, fontWeight: 600, fontSize: '14px' }}>
-          Reserve a Spot
-        </button>
+        <div style={{ padding: '18px 24px 24px' }}>
+        {((event.isExpired || event.IsExpired)) ? (
+          <div style={{ width: '100%', padding: '12px', background: '#F3F4F6', color: '#6B7280', border: 'none', borderRadius: '10px', textAlign: 'center', fontWeight: 700 }}>Event Ended</div>
+        ) : (
+          !showCheckout && (
+            <button onClick={() => setShowCheckout(true)} className="es-register-btn" style={{ width: '100%', padding: '12px', background: colors.wine, color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontFamily: fontBody, fontWeight: 600, fontSize: '14px' }}>
+              Reserve a Spot
+            </button>
+          )
+        )}
+
+        {showCheckout && (
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            setLoadingCheckout(true);
+            try {
+              const payload = {
+                fullName: fullName || 'Guest',
+                email: emailInput || 'guest@example.com',
+                phone: '',
+                eventId: event.id || event.eventId,
+                quantity: 1,
+                cardNumber,
+                cardName,
+                cardExpiry
+              };
+
+              const res = await fetch('/api/bookings/guest-checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+
+              if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || 'Checkout failed');
+              }
+
+              const data = await res.json();
+              alert('Booking confirmed and marked paid. Booking ID: ' + data.id);
+              setShowCheckout(false);
+              // Optionally notify parent
+              if (onRegister) onRegister(title);
+            } catch (err) {
+              alert('Checkout error: ' + err.message);
+            } finally {
+              setLoadingCheckout(false);
+            }
+          }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <input required placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}` }} />
+            <input required type="email" placeholder="Email" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}` }} />
+            <input placeholder="Card number (mock)" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}` }} />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input placeholder="Name on card" value={cardName} onChange={(e) => setCardName(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}`, flex: 1 }} />
+              <input placeholder="MM/YY" value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}`, width: '110px' }} />
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="submit" disabled={loadingCheckout} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: colors.wine, color: '#fff' }}>{loadingCheckout ? 'Processing...' : 'Confirm & Pay (mock)'}</button>
+              <button type="button" onClick={() => setShowCheckout(false)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ddd', background: '#fff' }}>Cancel</button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -111,6 +214,7 @@ function EventCard({ event, onRegister }) {
 
 function AttendeePortal() {
   const [events, setEvents] = useState([]);
+  const [categoryFilter, setCategoryFilter] = useState('All');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -132,13 +236,26 @@ function AttendeePortal() {
           <h1 style={{ margin: '0 0 10px 0', fontFamily: fontDisplay, fontSize: '42px', color: colors.ink, fontWeight: 600 }}>
             Upcoming <span style={{ fontStyle: 'italic', color: colors.wine }}>Public Events</span>
           </h1>
+          <div style={{ marginTop: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <label style={{ color: colors.muted, fontSize: '14px', marginRight: '8px' }}>Category:</label>
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}` }}>
+              <option value="All">All</option>
+              <option value="Conference">Conference</option>
+              <option value="Ceremony">Ceremony</option>
+              <option value="Workshop">Workshop</option>
+              <option value="Seminar">Seminar</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
         </div>
         {loading && <p style={{ color: colors.muted }}>Loading events...</p>}
         {error && <p style={{ color: '#b3261e' }}>{error}</p>}
         <div style={{ display: 'grid', gap: '26px', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
-          {events.map((event) => (
-            <EventCard key={event.id || event.eventId} event={event} onRegister={(title) => alert(`Successfully reserved spot for: ${title}`)} />
-          ))}
+          {events
+            .filter(ev => categoryFilter === 'All' || (ev.category || ev.Category || ev.Category === categoryFilter || (ev.category && ev.category === categoryFilter) || (ev.Category && ev.Category === categoryFilter) ? true : (ev.category || ev.Category) === categoryFilter))
+            .map((event) => (
+              <EventCard key={event.id || event.eventId} event={event} onRegister={(title) => alert(`Successfully reserved spot for: ${title}`)} />
+            ))}
         </div>
       </div>
     </div>
@@ -150,6 +267,8 @@ function CreateEventView() {
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [capacity, setCapacity] = useState('');
+  const [price, setPrice] = useState('');
+  const [category, setCategory] = useState('Other');
   const [startDateTime, setStartDateTime] = useState('');
   const [endDateTime, setEndDateTime] = useState('');
   const [error, setError] = useState('');
@@ -162,11 +281,21 @@ function CreateEventView() {
     setLoading(true);
 
     try {
+      // Validate numeric inputs on client-side
+      const capVal = capacity ? parseInt(capacity, 10) : 0;
+      const priceVal = price ? parseFloat(price) : 0;
+      if (capVal < 0 || priceVal < 0) {
+        setError('Capacity and Price must be 0 or greater.');
+        setLoading(false);
+        return;
+      }
       const payload = {
         title,
         description,
         location: location || 'Default Location',
-        capacity: capacity ? parseInt(capacity, 10) : 100,
+          capacity: capacity ? parseInt(capacity, 10) : 100,
+          price: price ? parseFloat(price) : 0,
+          category: category,
         startDateTime: startDateTime ? new Date(startDateTime).toISOString() : new Date().toISOString(),
         endDateTime: endDateTime ? new Date(endDateTime).toISOString() : new Date(Date.now() + 86400000).toISOString(),
         eventTemplateId: 1, // Handled automatically, no manual ID entry required
@@ -213,7 +342,23 @@ function CreateEventView() {
 
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Capacity</label>
-            <input type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 150" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+            <input type="number" min="0" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 150" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Price (USD)</label>
+            <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 25.00" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Category</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}` }}>
+              <option value="Conference">Conference</option>
+              <option value="Ceremony">Ceremony</option>
+              <option value="Workshop">Workshop</option>
+              <option value="Seminar">Seminar</option>
+              <option value="Other">Other</option>
+            </select>
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -239,23 +384,25 @@ function CreateEventView() {
 function AdminPanel({ currentUser, setCurrentUser }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [adminTab, setAdminTab] = useState('upcoming'); // 'upcoming' | 'past'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [editingEvent, setEditingEvent] = useState(null);
   const navigate = useNavigate();
 
-  const fetchEvents = () => {
-    eventService.getAllEvents()
+  const fetchEvents = (includeExpired = false) => {
+    setLoading(true);
+    eventService.getAllEvents(includeExpired)
       .then((data) => { setEvents(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
   useEffect(() => {
     if (currentUser) {
-      fetchEvents();
+      fetchEvents(adminTab === 'past');
     }
-  }, [currentUser]);
+  }, [currentUser, adminTab]);
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
@@ -280,12 +427,10 @@ function AdminPanel({ currentUser, setCurrentUser }) {
   };
 
   const handleStartEditing = (event) => {
-    // Format dates to YYYY-MM-DDThh:mm for datetime-local input fields
+    // Format backend UTC string into a value suitable for <input type="datetime-local" />
     const formatLocalDateTime = (dateStr) => {
       if (!dateStr) return '';
-      const d = new Date(dateStr);
-      if (isNaN(d)) return '';
-      return d.toISOString().slice(0, 16);
+      return toLocalInputValue(dateStr);
     };
 
     setEditingEvent({
@@ -302,17 +447,27 @@ function AdminPanel({ currentUser, setCurrentUser }) {
   const handleUpdateSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Validate numeric inputs for edit form
+      const capVal = editingEvent.capacity ? parseInt(editingEvent.capacity, 10) : 0;
+      const priceVal = editingEvent.price ? parseFloat(editingEvent.price) : 0;
+      if (capVal < 0 || priceVal < 0) {
+        alert('Capacity and Price must be 0 or greater.');
+        return;
+      }
       const eventId = editingEvent.id || editingEvent.eventId;
-      const payload = {
-        title: editingEvent.title,
-        description: editingEvent.description,
-        location: editingEvent.location || 'Default Location',
-        capacity: editingEvent.capacity ? parseInt(editingEvent.capacity, 10) : 100,
-        startDateTime: editingEvent.startDateTime ? new Date(editingEvent.startDateTime).toISOString() : new Date().toISOString(),
-        endDateTime: editingEvent.endDateTime ? new Date(editingEvent.endDateTime).toISOString() : new Date(Date.now() + 86400000).toISOString(),
-        eventTemplateId: editingEvent.eventTemplateId ? parseInt(editingEvent.eventTemplateId, 10) : 1,
-        isPublished: true,
-      };
+        const payload = {
+            id: parseInt(eventId, 10),
+            title: editingEvent.title,
+            description: editingEvent.description,
+            location: editingEvent.location || 'Default Location',
+            capacity: editingEvent.capacity ? parseInt(editingEvent.capacity, 10) : 100,
+            price: editingEvent.price ? parseFloat(editingEvent.price) : 0,
+            category: editingEvent.category || 'Other',
+            startDateTime: editingEvent.startDateTime ? new Date(editingEvent.startDateTime).toISOString() : new Date().toISOString(),
+            endDateTime: editingEvent.endDateTime ? new Date(editingEvent.endDateTime).toISOString() : new Date(Date.now() + 86400000).toISOString(),
+            eventTemplateId: editingEvent.eventTemplateId ? parseInt(editingEvent.eventTemplateId, 10) : 1,
+            isPublished: true,
+        };
 
       await eventService.updateEvent(eventId, payload);
       alert('Event updated successfully! 🎉');
@@ -358,7 +513,7 @@ function AdminPanel({ currentUser, setCurrentUser }) {
           </div>
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
             <button onClick={() => { authService.logout(); setCurrentUser(null); }} style={{ background: 'transparent', color: colors.muted, border: 'none', cursor: 'pointer', fontWeight: 600 }}>Sign Out</button>
-            <Link to="/" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600 }}>Home</Link>
+            <button onClick={() => { authService.logout(); setCurrentUser(null); navigate('/admin'); }} style={{ background: 'transparent', color: colors.wine, border: 'none', cursor: 'pointer', fontWeight: 600, textDecoration: 'none' }}>Home</button>
           </div>
         </div>
 
@@ -383,8 +538,24 @@ function AdminPanel({ currentUser, setCurrentUser }) {
 
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Capacity</label>
-                <input type="number" value={editingEvent.capacity} onChange={(e) => setEditingEvent({ ...editingEvent, capacity: e.target.value })} placeholder="Capacity" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+                <input type="number" min="0" value={editingEvent.capacity} onChange={(e) => setEditingEvent({ ...editingEvent, capacity: e.target.value })} placeholder="Capacity" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
               </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Price (USD)</label>
+              <input type="number" min="0" step="0.01" value={editingEvent.price} onChange={(e) => setEditingEvent({ ...editingEvent, price: e.target.value })} placeholder="Price" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Category</label>
+              <select value={editingEvent.category} onChange={(e) => setEditingEvent({ ...editingEvent, category: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}` }}>
+                <option value="Conference">Conference</option>
+                <option value="Ceremony">Ceremony</option>
+                <option value="Workshop">Workshop</option>
+                <option value="Seminar">Seminar</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
 
               <div style={{ display: 'flex', gap: '10px' }}>
                 <div style={{ flex: 1 }}>
@@ -406,15 +577,22 @@ function AdminPanel({ currentUser, setCurrentUser }) {
         )}
 
         <div style={{ background: colors.card, padding: '30px', borderRadius: '16px', border: `1px solid ${colors.roseSoft}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h3 style={{ margin: 0, fontFamily: fontDisplay, fontSize: '20px', color: colors.ink }}>Manage Events Database</h3>
-            <button 
-              onClick={() => navigate('/create-event')} 
-              style={{ background: colors.wine, color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
-            >
-              + Add Event
-            </button>
-          </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                      <h3 style={{ margin: 0, fontFamily: fontDisplay, fontSize: '20px', color: colors.ink }}>Manage Events Database</h3>
+                      <button
+                          onClick={() => navigate('/create-event')}
+                          style={{ background: colors.wine, color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
+                      >
+                          + Add Event
+                      </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                      <button onClick={() => setAdminTab('upcoming')} style={{ padding: '8px 12px', borderRadius: '8px', border: adminTab === 'upcoming' ? `2px solid ${colors.wine}` : `1px solid ${colors.roseSoft}`, background: adminTab === 'upcoming' ? colors.wine : 'transparent', color: adminTab === 'upcoming' ? '#fff' : colors.muted, fontWeight: 700, cursor: 'pointer' }}>Upcoming Events</button>
+                      <button onClick={() => setAdminTab('past')} style={{ padding: '8px 12px', borderRadius: '8px', border: adminTab === 'past' ? `2px solid ${colors.wine}` : `1px solid ${colors.roseSoft}`, background: adminTab === 'past' ? colors.wine : 'transparent', color: adminTab === 'past' ? '#fff' : colors.muted, fontWeight: 700, cursor: 'pointer' }}>Past Events</button>
+                  </div>
+
+                  {loading && <p style={{ color: colors.muted }}>Loading...</p>}
 
           {loading && <p style={{ color: colors.muted }}>Loading...</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>

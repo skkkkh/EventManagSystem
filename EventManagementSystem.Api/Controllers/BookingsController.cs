@@ -81,7 +81,8 @@ public class BookingsController : ControllerBase
                 b.Quantity,
                 b.TotalAmount,
                 b.Status.ToString(),
-                b.BookedAt
+                b.BookedAt,
+                b.IsPaid
             ))
             .ToListAsync();
 
@@ -105,8 +106,49 @@ public class BookingsController : ControllerBase
             booking.Quantity,
             booking.TotalAmount,
             booking.Status.ToString(),
-            booking.BookedAt
+            booking.BookedAt,
+            booking.IsPaid
         ));
+    }
+
+    // Public guest checkout: create registration and booking, mark paid (mock)
+    [AllowAnonymous]
+    [HttpPost("guest-checkout")]
+    public async Task<IActionResult> GuestCheckout([FromBody] GuestCheckoutDto dto)
+    {
+        // Find or create registration for this email + event
+        var existing = await _context.Registrations.FirstOrDefaultAsync(r => r.EventId == dto.EventId && r.Email == dto.Email);
+        Registration registration = existing ?? new Registration
+        {
+            FullName = dto.FullName,
+            Email = dto.Email,
+            Phone = dto.Phone,
+            EventId = dto.EventId,
+            RegisteredAt = DateTime.UtcNow
+        };
+
+        if (existing == null)
+        {
+            await _context.Registrations.AddAsync(registration);
+            await _context.SaveChangesAsync();
+        }
+
+        // Find first available ticket type for event
+        var ticketType = await _context.TicketTypes.FirstOrDefaultAsync(t => t.EventId == dto.EventId && t.Quantity >= dto.Quantity);
+        if (ticketType == null)
+            return BadRequest("No ticket type with sufficient quantity available for this event.");
+
+        // Prevent bookings for events that have already ended
+        var ev = await _context.Events.FirstOrDefaultAsync(e => e.Id == ticketType.EventId);
+        if (ev != null && ev.EndDateTime < DateTime.UtcNow)
+            return BadRequest("This event has ended and is no longer accepting bookings");
+
+        var bookingDto = new CreateBookingDto(registration.Id, ticketType.Id, dto.Quantity, true);
+
+        // Use mediator to create booking via existing handler
+        var response = await _mediator.Send(new CreateBookingCommand(bookingDto));
+
+        return CreatedAtAction(nameof(GetBooking), new { id = response.Id }, response);
     }
 
     [HttpPut("{id:int}/cancel")]

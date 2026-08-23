@@ -1,5 +1,7 @@
 using EventManagementSystem.Api.Models;
 using EventManagementSystem.Api.Repositories;
+using EventManagementSystem.Api.DTOs;
+using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,12 +16,40 @@ public class EventsController : ControllerBase
         _unitOfWork = unitOfWork;
     }
 
+    private async Task<int> GetBookedCount(int eventId)
+    {
+        var ticketTypes = await _unitOfWork.TicketTypes.FindAsync(tt => tt.EventId == eventId);
+        int booked = 0;
+        foreach (var tt in ticketTypes)
+        {
+            var bookings = await _unitOfWork.Bookings.FindAsync(b => b.TicketTypeId == tt.Id && b.Status != BookingStatus.Cancelled);
+            booked += bookings.Sum(b => b.Quantity);
+        }
+        return booked;
+    }
+
     // Public: Anyone can view events
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] bool includeExpired = false)
     {
-        var events = await _unitOfWork.Events.GetAllAsync();
-        return Ok(events);
+        var now = DateTime.UtcNow;
+        IReadOnlyList<Event> events;
+
+        if (includeExpired)
+            events = await _unitOfWork.Events.FindAsync(e => e.EndDateTime < now);
+        else
+            events = await _unitOfWork.Events.FindAsync(e => e.EndDateTime >= now);
+
+        var result = new List<EventDto>();
+
+        foreach (var ev in events)
+        {
+            var dto = EventDto.FromEntity(ev);
+            dto.SeatsRemaining = Math.Max(0, ev.Capacity - await GetBookedCount(ev.Id));
+            result.Add(dto);
+        }
+
+        return Ok(result);
     }
 
     [HttpGet("{id}")]
@@ -27,7 +57,11 @@ public class EventsController : ControllerBase
     {
         var ev = await _unitOfWork.Events.GetByIdAsync(id);
         if (ev == null) return NotFound();
-        return Ok(ev);
+
+        var dto = EventDto.FromEntity(ev);
+        dto.SeatsRemaining = Math.Max(0, ev.Capacity - await GetBookedCount(ev.Id));
+
+        return Ok(dto);
     }
 
     // Protected: Only logged-in users/admins can modify
@@ -36,7 +70,20 @@ public class EventsController : ControllerBase
     public async Task<IActionResult> Create([FromBody] Event ev)
     {
         await _unitOfWork.Events.AddAsync(ev);
-        await _unitOfWork.CompleteAsync();
+        await _unitOfWork.SaveChangesAsync();
+
+        // Create a default ticket type so guest checkout can find tickets for this event
+        var defaultTicket = new TicketType
+        {
+            Name = "General Admission",
+            Price = ev.Price,
+            Quantity = ev.Capacity,
+            EventId = ev.Id
+        };
+
+        await _unitOfWork.TicketTypes.AddAsync(defaultTicket);
+        await _unitOfWork.SaveChangesAsync();
+
         return CreatedAtAction(nameof(GetById), new { id = ev.Id }, ev);
     }
 

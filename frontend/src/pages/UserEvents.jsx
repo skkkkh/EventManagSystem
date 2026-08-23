@@ -7,7 +7,7 @@ function UserEvents() {
 
   useEffect(() => {
     // Fetch upcoming events from the backend API
-    fetch('http://localhost:5080/api/events')
+    fetch('http://localhost:5003/api/events')
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch events');
         return res.json();

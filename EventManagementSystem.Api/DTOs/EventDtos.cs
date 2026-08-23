@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using EventManagementSystem.Api.Models;
 
 namespace EventManagementSystem.Api.DTOs;
@@ -22,11 +23,16 @@ public class CreateEventDto
     [Required]
     public DateTime EndDateTime { get; set; }
 
-    [Range(1, int.MaxValue)]
+    [Range(0, int.MaxValue)]
     public int Capacity { get; set; }
 
     [Required]
     public int EventTemplateId { get; set; }
+
+    public string? Category { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal Price { get; set; }
 
     public List<CustomFieldValueDto> FieldValues { get; set; } = new();
 }
@@ -45,10 +51,15 @@ public class UpdateEventDto
     public DateTime StartDateTime { get; set; }
     public DateTime EndDateTime { get; set; }
 
-    [Range(1, int.MaxValue)]
+    [Range(0, int.MaxValue)]
     public int Capacity { get; set; }
 
     public bool IsPublished { get; set; }
+
+    public string? Category { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal Price { get; set; }
 
     public List<CustomFieldValueDto> FieldValues { get; set; } = new();
 }
@@ -67,6 +78,13 @@ public class EventDto
     public string? EventTemplateName { get; set; }
     public List<CustomFieldValueDto> FieldValues { get; set; } = new();
 
+    public string Category { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public int SeatsRemaining { get; set; }
+    public string StartDateTimeFormatted => StartDateTime.ToString("f");
+    public string EndDateTimeFormatted => EndDateTime.ToString("f");
+    public bool IsExpired { get; set; }
+
     public static EventDto FromEntity(Event e) => new()
     {
         Id = e.Id,
@@ -81,6 +99,10 @@ public class EventDto
         EventTemplateName = e.EventTemplate?.Name,
         FieldValues = e.FieldValues
             .Select(v => new CustomFieldValueDto(v.CustomFieldId, v.Value))
-            .ToList()
+            .ToList(),
+        Category = e.Category.ToString(),
+        Price = e.Price
+        ,
+        IsExpired = e.EndDateTime < DateTime.UtcNow
     };
 }

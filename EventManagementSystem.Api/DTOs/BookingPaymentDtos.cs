@@ -37,7 +37,8 @@ public record TicketTypeResponseDto(
 public record CreateBookingDto(
     int RegistrationId,
     int TicketTypeId,
-    [Range(1, 100)] int Quantity
+    [Range(1, 100)] int Quantity,
+    bool IsPaid = false
 );
 
 public record BookingResponseDto(
@@ -47,7 +48,20 @@ public record BookingResponseDto(
     int Quantity,
     decimal TotalAmount,
     string Status,
-    DateTime BookedAt
+    DateTime BookedAt,
+    bool IsPaid
+);
+
+public record GuestCheckoutDto(
+    [Required, MaxLength(150)] string FullName,
+    [Required, EmailAddress, MaxLength(200)] string Email,
+    [MaxLength(30)] string? Phone,
+    int EventId,
+    [Range(1,100)] int Quantity,
+    // Fake card fields (not processed) kept for UI completeness
+    string CardNumber,
+    string CardName,
+    string CardExpiry
 );
 
 public record CreatePaymentDto(

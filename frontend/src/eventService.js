@@ -1,5 +1,5 @@
 // eventService.js
-const API_BASE_URL = 'http://localhost:5080/api/events';
+const API_BASE_URL = 'http://localhost:5003/api/events';
 
 const getAuthHeaders = () => {
     let token = null;
@@ -28,8 +28,9 @@ const getAuthHeaders = () => {
 };
 
 export const eventService = {
-    async getAllEvents() {
-        const response = await fetch(API_BASE_URL);
+    async getAllEvents(includeExpired = false) {
+        const url = includeExpired ? `${API_BASE_URL}?includeExpired=true` : API_BASE_URL;
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch events');
         return response.json();
     },

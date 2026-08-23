@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace EventManagementSystem.Api.Models;
 
@@ -21,7 +22,12 @@ public class Event
     /// <summary>Max attendees. Booking module reads this to enforce capacity.</summary>
     public int Capacity { get; set; }
 
+    [Range(0, 100000000)]
+    public decimal Price { get; set; } = 0m;
+
     public bool IsPublished { get; set; }
+
+    public EventCategory Category { get; set; } = EventCategory.Other;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -31,4 +37,14 @@ public class Event
 
     // Values for the template's custom fields, specific to this event
     public ICollection<EventFieldValue> FieldValues { get; set; } = new List<EventFieldValue>();
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum EventCategory
+{
+    Conference,
+    Ceremony,
+    Workshop,
+    Seminar,
+    Other
 }

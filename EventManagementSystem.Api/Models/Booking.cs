@@ -24,6 +24,9 @@ public class Booking
     public DateTime BookedAt { get; set; } = DateTime.UtcNow;
 
     public Payment? Payment { get; set; }
+
+    // Indicates whether the booking has been paid for (mock/payment status)
+    public bool IsPaid { get; set; } = false;
 }
 
 public enum BookingStatus

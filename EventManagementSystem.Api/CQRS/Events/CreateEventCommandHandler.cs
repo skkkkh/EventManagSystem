@@ -53,11 +53,25 @@ public class CreateEventCommandHandler : IRequestHandler<CreateEventCommand, Eve
             StartDateTime = dto.StartDateTime,
             EndDateTime = dto.EndDateTime,
             Capacity = dto.Capacity,
+            Price = dto.Price,
+            Category = Enum.TryParse<EventCategory>(dto.Category, true, out var parsedCat) ? parsedCat : EventCategory.Other,
             EventTemplateId = dto.EventTemplateId,
             FieldValues = dto.FieldValues.Select(v => new EventFieldValue { CustomFieldId = v.CustomFieldId, Value = v.Value }).ToList()
         };
 
         await _uow.Events.AddAsync(entity);
+        await _uow.SaveChangesAsync();
+
+        // Ensure a default ticket type exists for this event so guest checkout can work
+        var ticketType = new TicketType
+        {
+            Name = "General Admission",
+            Price = dto.Price,
+            Quantity = dto.Capacity,
+            EventId = entity.Id
+        };
+
+        await _uow.TicketTypes.AddAsync(ticketType);
         await _uow.SaveChangesAsync();
 
         return EventDto.FromEntity(entity);
