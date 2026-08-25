@@ -17,6 +17,13 @@ public class User : IdentityUser<int>
 
     public DateTime RegistrationDate { get; set; } = DateTime.UtcNow;
 
+    [MaxLength(20)]
+    public string? Phone { get; set; }
+
+    public bool IsValidated { get; set; } = false;
+
+    public bool BiometricEnabled { get; set; } = false;
+
     // Navigation
     public ICollection<Notification> Notifications { get; set; }
         = new List<Notification>();

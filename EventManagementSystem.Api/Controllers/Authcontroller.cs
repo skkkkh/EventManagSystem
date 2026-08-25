@@ -47,6 +47,7 @@ public class AuthController : ControllerBase
             Email = dto.Email,
             Name = dto.Name,
             Role = role,
+            Phone = dto.Phone,
             RegistrationDate = DateTime.UtcNow
         };
 

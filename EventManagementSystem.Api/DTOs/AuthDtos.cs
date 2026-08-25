@@ -16,6 +16,8 @@ public class RegisterDto
     [MinLength(6)]
     public string Password { get; set; } = string.Empty;
 
+    public string? Phone { get; set; }
+
     // Optional: caller can request a role at registration time.
     // Defaults to "Attendee" if not provided or not a valid role.
     public string? Role { get; set; }
