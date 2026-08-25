@@ -1,12 +1,13 @@
-﻿using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using EventManagementSystem.Api.DTOs;
+﻿using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace EventManagementSystem.Api.Controllers;
 
@@ -80,6 +81,23 @@ public class AuthController : ControllerBase
         await SignInMvcCookieAsync(user);
 
         return Ok(response);
+    }
+
+    [HttpPut("validate-organiser/{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ValidateOrganiser(int id)
+    {
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user == null) return NotFound();
+
+        if (user.Role != "Organizer")
+            return BadRequest("This user is not registered as an organiser.");
+
+        user.IsValidated = true;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded) return BadRequest(result.Errors.Select(e => e.Description));
+
+        return NoContent();
     }
 
     private async Task SignInMvcCookieAsync(User user)
