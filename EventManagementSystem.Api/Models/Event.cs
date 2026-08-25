@@ -29,6 +29,11 @@ public class Event
 
     public EventCategory Category { get; set; } = EventCategory.Other;
 
+
+    // If set, only members of this group can see the event. Null = public event.
+    public int? GroupId { get; set; }
+    public Group? Group { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Made optional so the database/API won't crash if it's missing
