@@ -16,6 +16,9 @@ public class Event
     [MaxLength(300)]
     public string? Location { get; set; }
 
+    [MaxLength(200)]
+    public string? Organizer { get; set; } // Added for Society/Organizer name
+
     public DateTime StartDateTime { get; set; }
     public DateTime EndDateTime { get; set; }
 
@@ -30,6 +33,10 @@ public class Event
     public EventCategory Category { get; set; } = EventCategory.Other;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Optional URL for an event image
+    [MaxLength(2000)]
+    public string? ImageUrl { get; set; }
 
     // Made optional so the database/API won't crash if it's missing
     public int? EventTemplateId { get; set; }

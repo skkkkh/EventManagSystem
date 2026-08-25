@@ -6,6 +6,7 @@ function CreateEvent() {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [location, setLocation] = useState('');
+    const [category, setCategory] = useState('conference'); // Added category state
     const [startDateTime, setStartDateTime] = useState('');
     const [endDateTime, setEndDateTime] = useState('');
     const [capacity, setCapacity] = useState('');
@@ -20,6 +21,7 @@ function CreateEvent() {
                 title,
                 description,
                 location,
+                category, // Included category here
                 startDateTime: new Date(startDateTime).toISOString(),
                 endDateTime: new Date(endDateTime).toISOString(),
                 capacity: capacity ? parseInt(capacity) : null,
@@ -67,6 +69,23 @@ function CreateEvent() {
                         onChange={(e) => setLocation(e.target.value)}
                         style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
                     />
+                </div>
+
+                {/* Added Category Dropdown Selection */}
+                <div>
+                    <label style={{ display: 'block', marginBottom: '5px' }}>Category *</label>
+                    <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        required
+                        style={{ width: '100%', padding: '8px', boxSizing: 'border-box', background: '#222', color: '#fff', border: '1px solid #555' }}
+                    >
+                        <option value="conference">Conference</option>
+                        <option value="workshop">Workshop</option>
+                        <option value="meeting">Meeting</option>
+                        <option value="shows">Shows</option>
+                        <option value="other">Other</option>
+                    </select>
                 </div>
 
                 <div>
