@@ -1,7 +1,10 @@
+using EventManagementSystem.Api.CQRS.Notifications;
 using EventManagementSystem.Api.Models;
 using EventManagementSystem.Api.Repositories;
 using EventManagementSystem.Api.DTOs;
 using System.Linq;
+using System.Security.Claims;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,10 +13,12 @@ using Microsoft.AspNetCore.Mvc;
 public class EventsController : ControllerBase
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMediator _mediator;
 
-    public EventsController(IUnitOfWork unitOfWork)
+    public EventsController(IUnitOfWork unitOfWork, IMediator mediator)
     {
         _unitOfWork = unitOfWork;
+        _mediator = mediator;
     }
 
     private async Task<int> GetBookedCount(int eventId)
@@ -28,7 +33,6 @@ public class EventsController : ControllerBase
         return booked;
     }
 
-    // Public: Anyone can view events
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] bool includeExpired = false)
     {
@@ -64,15 +68,19 @@ public class EventsController : ControllerBase
         return Ok(dto);
     }
 
-    // Protected: Only logged-in users/admins can modify
     [Authorize]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] Event ev)
     {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (int.TryParse(userIdClaim, out var currentUserId))
+        {
+            ev.OrganizerId = currentUserId;
+        }
+
         await _unitOfWork.Events.AddAsync(ev);
         await _unitOfWork.SaveChangesAsync();
 
-        // Create a default ticket type so guest checkout can find tickets for this event
         var defaultTicket = new TicketType
         {
             Name = "General Admission",
@@ -92,8 +100,54 @@ public class EventsController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] Event ev)
     {
         if (id != ev.Id) return BadRequest();
-        _unitOfWork.Events.Update(ev);
+
+        var existing = await _unitOfWork.Events.GetByIdAsync(id);
+        if (existing == null) return NotFound();
+
+        var oldCapacity = existing.Capacity;
+
+        // Update only the fields the edit form actually sends — this preserves
+        // OrganizerId, ImageUrl, CreatedAt, etc. which the form doesn't
+        // include, so they no longer get silently wiped out on every edit.
+        existing.Title = ev.Title;
+        existing.Description = ev.Description;
+        existing.Location = ev.Location;
+        existing.Organizer = ev.Organizer;
+        existing.StartDateTime = ev.StartDateTime;
+        existing.EndDateTime = ev.EndDateTime;
+        existing.Capacity = ev.Capacity;
+        existing.IsPublished = ev.IsPublished;
+        existing.Category = ev.Category;
+
+        _unitOfWork.Events.Update(existing);
+
+        // Keep ticket inventory in sync with capacity changes, so raising
+        // capacity actually reopens booking availability, and lowering it
+        // reduces remaining seats accordingly.
+        var capacityDelta = ev.Capacity - oldCapacity;
+        if (capacityDelta != 0)
+        {
+            var ticketTypes = await _unitOfWork.TicketTypes.FindAsync(t => t.EventId == id);
+            var primaryTicket = ticketTypes.FirstOrDefault();
+            if (primaryTicket != null)
+            {
+                primaryTicket.Quantity = Math.Max(0, primaryTicket.Quantity + capacityDelta);
+                _unitOfWork.TicketTypes.Update(primaryTicket);
+            }
+        }
+
         await _unitOfWork.CompleteAsync();
+
+        var registrations = await _unitOfWork.Registrations.FindAsync(r => r.EventId == id);
+        if (registrations.Any())
+        {
+            await _mediator.Publish(new EventUpdatedEvent
+            {
+                EventTitle = existing.Title,
+                Registrants = registrations.Select(r => (r.Email, r.FullName, r.UserId)).ToList()
+            });
+        }
+
         return NoContent();
     }
 
@@ -104,8 +158,22 @@ public class EventsController : ControllerBase
         var ev = await _unitOfWork.Events.GetByIdAsync(id);
         if (ev == null) return NotFound();
 
+        var registrations = await _unitOfWork.Registrations.FindAsync(r => r.EventId == id);
+        var registrantList = registrations.Select(r => (r.Email, r.FullName, r.UserId)).ToList();
+        var eventTitle = ev.Title;
+
         _unitOfWork.Events.Remove(ev);
         await _unitOfWork.CompleteAsync();
+
+        if (registrantList.Any())
+        {
+            await _mediator.Publish(new EventCancelledEvent
+            {
+                EventTitle = eventTitle,
+                Registrants = registrantList
+            });
+        }
+
         return NoContent();
     }
 }

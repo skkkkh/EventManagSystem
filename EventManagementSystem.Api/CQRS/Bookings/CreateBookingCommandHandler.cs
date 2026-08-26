@@ -1,4 +1,5 @@
-﻿using EventManagementSystem.Api.DTOs;
+﻿using EventManagementSystem.Api.CQRS.Notifications;
+using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
 using EventManagementSystem.Api.Repositories;
 using MediatR;
@@ -8,15 +9,14 @@ namespace EventManagementSystem.Api.CQRS.Bookings;
 public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand, BookingResponseDto>
 {
     private readonly IUnitOfWork _uow;
+    private readonly IMediator _mediator;
 
-    // Prevents two booking requests from changing the same
-    // ticket inventory at the same time inside this API instance.
-    // (Same concurrency guard your controller used to have.)
     private static readonly SemaphoreSlim BookingLock = new(1, 1);
 
-    public CreateBookingCommandHandler(IUnitOfWork uow)
+    public CreateBookingCommandHandler(IUnitOfWork uow, IMediator mediator)
     {
         _uow = uow;
+        _mediator = mediator;
     }
 
     public async Task<BookingResponseDto> Handle(CreateBookingCommand request, CancellationToken cancellationToken)
@@ -34,7 +34,6 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
             if (ticketType is null)
                 throw new KeyNotFoundException("Ticket type not found.");
 
-            // Prevent bookings for events that have already ended
             var ev = await _uow.Events.GetByIdAsync(ticketType.EventId);
             if (ev != null && ev.EndDateTime < DateTime.UtcNow)
                 throw new InvalidOperationException("This event has ended and is no longer accepting bookings");
@@ -64,7 +63,6 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
             await _uow.Bookings.AddAsync(booking);
             await _uow.SaveChangesAsync();
 
-            // If paid, create a simple Payment record
             if (dto.IsPaid)
             {
                 var payment = new Payment
@@ -78,6 +76,36 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 };
 
                 await _uow.Payments.AddAsync(payment);
+                await _uow.SaveChangesAsync();
+            }
+
+            // Email confirmation to the registrant
+            await _mediator.Publish(new BookingConfirmedEvent
+            {
+                BookingId = booking.Id,
+                RegistrationEmail = registration.Email,
+                RegistrationName = registration.FullName,
+                EventTitle = ev?.Title ?? "the event"
+            }, cancellationToken);
+
+            // Email confirmation to the organizer, keeping them updated on registration activity
+            await _mediator.Publish(new OrganizerBookingUpdateEvent
+            {
+                OrganizerId = ev?.OrganizerId,
+                EventTitle = ev?.Title ?? "the event",
+                RegistrantName = registration.FullName,
+                Quantity = dto.Quantity
+            }, cancellationToken);
+
+            // In-app alert to organizer if capacity is now full
+            if (ticketType.Quantity == 0)
+            {
+                await _mediator.Publish(new CapacityReachedEvent
+                {
+                    EventId = ticketType.EventId,
+                    EventTitle = ev?.Title ?? "the event",
+                    OrganizerId = ev?.OrganizerId
+                }, cancellationToken);
             }
 
             return new BookingResponseDto(

@@ -17,12 +17,14 @@ public class Event
     public string? Location { get; set; }
 
     [MaxLength(200)]
-    public string? Organizer { get; set; } // Added for Society/Organizer name
+    public string? Organizer { get; set; }
+
+    public int? OrganizerId { get; set; }
+    public User? OrganizerUser { get; set; }
 
     public DateTime StartDateTime { get; set; }
     public DateTime EndDateTime { get; set; }
 
-    /// <summary>Max attendees. Booking module reads this to enforce capacity.</summary>
     public int Capacity { get; set; }
 
     [Range(0, 100000000)]
@@ -34,15 +36,12 @@ public class Event
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    // Optional URL for an event image
     [MaxLength(2000)]
     public string? ImageUrl { get; set; }
 
-    // Made optional so the database/API won't crash if it's missing
     public int? EventTemplateId { get; set; }
     public EventTemplate? EventTemplate { get; set; }
 
-    // Values for the template's custom fields, specific to this event
     public ICollection<EventFieldValue> FieldValues { get; set; } = new List<EventFieldValue>();
 }
 
@@ -50,8 +49,8 @@ public class Event
 public enum EventCategory
 {
     Conference,
-    Ceremony,
     Workshop,
-    Seminar,
+    Meeting,
+    Shows,
     Other
 }

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace EventManagementSystem.Api.Controllers;
@@ -32,12 +33,21 @@ public class RegistrationsController : ControllerBase
         if (!eventExists)
             return NotFound("Event not found.");
 
+        // NEW — capture the logged-in user's account so in-app alerts can reach them later
+        int? userId = null;
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (int.TryParse(userIdClaim, out var parsedUserId))
+        {
+            userId = parsedUserId;
+        }
+
         var registration = new Registration
         {
             FullName = dto.FullName,
             Email = dto.Email,
             Phone = dto.Phone,
             EventId = dto.EventId,
+            UserId = userId,
             RegisteredAt = DateTime.UtcNow
         };
 
