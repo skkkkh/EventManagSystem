@@ -1,12 +1,13 @@
+using EventManagementSystem.Api.CQRS.Groups;
 using EventManagementSystem.Api.CQRS.Notifications;
+using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
 using EventManagementSystem.Api.Repositories;
-using EventManagementSystem.Api.DTOs;
-using System.Linq;
-using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Linq;
+using System.Security.Claims;
 
 [Route("api/[controller]")]
 [ApiController]
@@ -175,5 +176,40 @@ public class EventsController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    [HttpPut("{id:int}/group")]
+    [Authorize]
+    public async Task<IActionResult> SetGroupRestriction(int id, [FromBody] int? groupId)
+    {
+        var organiserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (organiserIdClaim is null || !int.TryParse(organiserIdClaim, out var organiserId))
+            return Unauthorized("Could not identify the logged-in organiser.");
+
+        try
+        {
+            await _mediator.Send(new SetEventGroupCommand(id, groupId, organiserId));
+            return NoContent();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpGet("{id:int}/access-check")]
+    public async Task<IActionResult> AccessCheck(int id)
+    {
+        int? userId = null;
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdClaim is not null && int.TryParse(userIdClaim, out var parsedId))
+            userId = parsedId;
+
+        var allowed = await _mediator.Send(new CheckEventAccessQuery(id, userId));
+        return Ok(new { IsAllowed = allowed });
     }
 }

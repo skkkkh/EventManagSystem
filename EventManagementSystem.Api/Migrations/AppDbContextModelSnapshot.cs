@@ -109,12 +109,12 @@ namespace EventManagementSystem.Api.Migrations
                     b.Property<int?>("EventTemplateId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("GroupId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
-
-                    b.Property<int?>("GroupId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsPublished")
                         .HasColumnType("INTEGER");
@@ -354,6 +354,38 @@ namespace EventManagementSystem.Api.Migrations
                     b.ToTable("Registrations");
                 });
 
+            modelBuilder.Entity("EventManagementSystem.Api.Models.Review", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("EventId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("Reviews");
+                });
+
             modelBuilder.Entity("EventManagementSystem.Api.Models.TicketType", b =>
                 {
                     b.Property<int>("Id")
@@ -404,12 +436,12 @@ namespace EventManagementSystem.Api.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsValidated")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("Interests")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsValidated")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("INTEGER");
@@ -740,6 +772,25 @@ namespace EventManagementSystem.Api.Migrations
                     b.HasOne("EventManagementSystem.Api.Models.User", null)
                         .WithMany("Registrations")
                         .HasForeignKey("UserId1");
+
+                    b.Navigation("Event");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("EventManagementSystem.Api.Models.Review", b =>
+                {
+                    b.HasOne("EventManagementSystem.Api.Models.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("EventManagementSystem.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Event");
 

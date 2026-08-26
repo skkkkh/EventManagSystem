@@ -61,6 +61,13 @@ public class AppDbContext
     public DbSet<GroupMember> GroupMembers
         => Set<GroupMember>();
 
+    // ------------------------------------------------
+    // Reviews
+    // ------------------------------------------------
+
+    public DbSet<Review> Reviews
+        => Set<Review>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -250,6 +257,10 @@ public class AppDbContext
             .WithMany()
             .HasForeignKey(e => e.GroupId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Review>()
+    .HasIndex(r => new { r.EventId, r.UserId })
+    .IsUnique();
     }
 }
 
