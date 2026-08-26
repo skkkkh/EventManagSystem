@@ -5,10 +5,10 @@ using EventManagementSystem.Api.Repositories;
 namespace EventManagementSystem.Api.Services;
 
 /// <summary>
-/// Minimal, provisional recommendation service used so the
-/// Dashboard/Recommendations code compiles and runs. This is a
-/// lightweight content-similarity approach (no ML) and is intended
-/// as a stand-in until the original module is provided.
+/// Content-based recommendation engine. Scores upcoming events using two
+/// signals: (1) categories the user has attended before, and (2) free-text
+/// interests the user has declared themselves — matched against each
+/// event's category, title, and description.
 /// </summary>
 public class RecommendationService : IRecommendationService
 {
@@ -19,63 +19,92 @@ public class RecommendationService : IRecommendationService
         _uow = uow;
     }
 
+    private async Task<int> GetBookedCount(int eventId)
+    {
+        var ticketTypes = await _uow.TicketTypes.FindAsync(tt => tt.EventId == eventId);
+        int booked = 0;
+        foreach (var tt in ticketTypes)
+        {
+            var bookings = await _uow.Bookings.FindAsync(b => b.TicketTypeId == tt.Id && b.Status != BookingStatus.Cancelled);
+            booked += bookings.Sum(b => b.Quantity);
+        }
+        return booked;
+    }
+
+    private static HashSet<string> Tokenize(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new HashSet<string>();
+        return new HashSet<string>(
+            text.ToLowerInvariant().Split(new[] { ' ', ',', '.', ';', ':', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+        );
+    }
+
     public async Task<IReadOnlyList<RecommendationDto>> GetRecommendationsForUserAsync(int userId, int count)
     {
         var user = await _uow.Users.GetByIdAsync(userId);
         if (user is null) return Array.Empty<RecommendationDto>();
 
-        // Load upcoming published events
-        var upcoming = await _uow.Events.FindAsync(e => e.IsPublished && e.StartDateTime >= DateTime.UtcNow);
+        var upcoming = (await _uow.Events.FindAsync(e => e.IsPublished && e.StartDateTime >= DateTime.UtcNow)).ToList();
 
-        // Try to infer user's preferred event templates (categories) from their past registrations.
-        // Registrations in this repo do not have a UserId FK; they store Email. Match by email.
-        var registrations = await _uow.Registrations.FindAsync(r => r.Email == user.Email);
-        // Collect event ids from registrations and resolve their template ids
-        var registeredEventIds = registrations.Select(r => r.EventId).Distinct().ToList();
-        var preferredTemplateIds = new HashSet<int>();
-        if (registeredEventIds.Any())
+        var byUserId = await _uow.Registrations.FindAsync(r => r.UserId == userId);
+        var byEmail = await _uow.Registrations.FindAsync(r => r.Email == user.Email);
+        var registrations = byUserId.Concat(byEmail).DistinctBy(r => r.Id).ToList();
+        var registeredEventIds = registrations.Select(r => r.EventId).Distinct().ToHashSet();
+
+        // Only recommend events the user hasn't already registered for AND that still have seats
+        var candidates = new List<(Event Event, int SeatsRemaining)>();
+        foreach (var e in upcoming.Where(e => !registeredEventIds.Contains(e.Id)))
         {
-            var registeredEvents = (await _uow.Events.FindAsync(e => registeredEventIds.Contains(e.Id))).ToList();
-            foreach (var re in registeredEvents)
+            var seatsRemaining = Math.Max(0, e.Capacity - await GetBookedCount(e.Id));
+            if (seatsRemaining > 0)
             {
-                if (re.EventTemplateId.HasValue)
-                    preferredTemplateIds.Add(re.EventTemplateId.Value);
+                candidates.Add((e, seatsRemaining));
             }
         }
 
-        // Scoring: +10 for template match, plus keyword overlap as tiebreaker.
-        string keywords = (user.Name + " " + (user.Email?.Split('@')[0] ?? string.Empty)).ToLowerInvariant();
-        var w = new HashSet<string>(keywords.Split(new[] { ' ', '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries));
+        // Signal 1: categories attended before
+        var registeredEvents = (await _uow.Events.FindAsync(e => registeredEventIds.Contains(e.Id))).ToList();
+        var preferredCategories = registeredEvents.Select(e => e.Category).Distinct().ToHashSet();
 
-        var scored = upcoming.Select(e =>
+        // Signal 2: user's own declared interests (free text, e.g. "tech, science, entertainment")
+        var interestTokens = Tokenize(user.Interests);
+
+        var scored = candidates.Select(c =>
         {
             int score = 0;
-            if (e.EventTemplateId.HasValue && preferredTemplateIds.Contains(e.EventTemplateId.Value)) score += 10;
+            bool categoryMatch = preferredCategories.Contains(c.Event.Category);
+            if (categoryMatch) score += 10;
 
-            var text = (e.Title + " " + (e.Description ?? string.Empty)).ToLowerInvariant();
-            var tokens = new HashSet<string>(text.Split(new[] { ' ', '.', ',', ';', ':', '-', '_' }, StringSplitOptions.RemoveEmptyEntries));
-            int overlap = tokens.Intersect(w).Count();
-            score += overlap;
+            var eventText = (c.Event.Category + " " + c.Event.Title + " " + (c.Event.Description ?? string.Empty)).ToLowerInvariant();
+            var eventTokens = Tokenize(eventText);
 
-            return (Event: e, Score: score, Overlap: overlap);
+            int interestOverlap = eventTokens.Intersect(interestTokens).Count();
+            score += interestOverlap * 8; // interests are a strong, deliberate signal — weigh heavily
+
+            return (c.Event, c.SeatsRemaining, Score: score, CategoryMatch: categoryMatch, InterestOverlap: interestOverlap);
         })
         .OrderByDescending(x => x.Score)
         .ThenBy(x => x.Event.StartDateTime)
         .Take(count)
         .ToList();
 
-        // If user has no registration history (cold start), fall back to pure keyword overlap behavior.
-        if (!preferredTemplateIds.Any())
+        var result = scored.Select(s =>
         {
-            var fallback = scored.OrderByDescending(s => s.Overlap).ThenBy(s => s.Event.StartDateTime)
-                .Take(count)
-                .Select(s => new RecommendationDto(EventDto.FromEntity(s.Event), s.Overlap > 0 ? "Because it matches your interests" : "Upcoming event"))
-                .ToList();
+            var dto = EventDto.FromEntity(s.Event);
+            dto.SeatsRemaining = s.SeatsRemaining;
 
-            return fallback;
-        }
+            string reason;
+            if (s.InterestOverlap > 0 && s.CategoryMatch)
+                reason = $"Matches your interests and past {s.Event.Category} events";
+            else if (s.InterestOverlap > 0)
+                reason = "Matches your stated interests";
+            else if (s.CategoryMatch)
+                reason = $"Because you attended {s.Event.Category} events before";
+            else
+                reason = "Upcoming event";
 
-        var result = scored.Select(s => new RecommendationDto(EventDto.FromEntity(s.Event), (s.Event.EventTemplateId.HasValue && preferredTemplateIds.Contains(s.Event.EventTemplateId.Value)) ? "Because you attended similar events" : (s.Overlap > 0 ? "Because it matches your interests" : "Upcoming event"))).ToList();
+            return new RecommendationDto(dto, reason);
+        }).ToList();
 
         return result;
     }

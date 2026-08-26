@@ -103,6 +103,17 @@ public class AppDbContext
 
 
         // --------------------------------------------------
+        // Event N --- 1 User (Organizer)  [NEW]
+        // --------------------------------------------------
+
+        modelBuilder.Entity<Event>()
+            .HasOne(e => e.OrganizerUser)
+            .WithMany()
+            .HasForeignKey(e => e.OrganizerId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+
+        // --------------------------------------------------
         // Event 1 --- * EventFieldValue
         // --------------------------------------------------
 
@@ -140,7 +151,15 @@ public class AppDbContext
             .WithMany()
             .HasForeignKey(r => r.EventId)
             .OnDelete(DeleteBehavior.Cascade);
+        // --------------------------------------------------
+        // Registration N --- 1 User  [NEW]
+        // --------------------------------------------------
 
+        modelBuilder.Entity<Registration>()
+            .HasOne(r => r.User)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // --------------------------------------------------
         // Event 1 --- * TicketType

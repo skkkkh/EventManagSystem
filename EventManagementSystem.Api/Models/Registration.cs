@@ -20,6 +20,11 @@ public class Registration
     public int EventId { get; set; }
     public Event? Event { get; set; }
 
+    // NEW — links to a logged-in User account when the registrant is authenticated.
+    // Stays null for guest checkout, since that flow doesn't require login.
+    public int? UserId { get; set; }
+    public User? User { get; set; }
+
     public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Booking> Bookings { get; set; } = new List<Booking>();

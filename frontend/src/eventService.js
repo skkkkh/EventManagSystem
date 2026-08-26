@@ -1,5 +1,5 @@
 // eventService.js
-const API_BASE_URL = 'http://localhost:5003/api/events';
+const API_BASE_URL = 'https://localhost:7080/api/events';
 
 const getAuthHeaders = () => {
     let token = null;

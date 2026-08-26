@@ -48,6 +48,7 @@ public class AuthController : ControllerBase
             Email = dto.Email,
             Name = dto.Name,
             Role = role,
+            Interests = dto.Interests,
             Phone = dto.Phone,
             RegistrationDate = DateTime.UtcNow
         };
@@ -80,6 +81,25 @@ public class AuthController : ControllerBase
         var response = await BuildAuthResponseAsync(user);
         await SignInMvcCookieAsync(user);
 
+        return Ok(response);
+    }
+
+    // Lets the logged-in user update their own interests at any time — not just at signup.
+    [Authorize]
+    [HttpPut("interests")]
+    public async Task<ActionResult<AuthResponseDto>> UpdateInterests(UpdateInterestsDto dto)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdClaim, out var userId)) return Unauthorized();
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null) return NotFound();
+
+        user.Interests = dto.Interests;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded) return BadRequest(result.Errors.Select(e => e.Description));
+
+        var response = await BuildAuthResponseAsync(user);
         return Ok(response);
     }
 
@@ -133,7 +153,6 @@ public class AuthController : ControllerBase
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        // Explicitly map as "role" so authorization attributes evaluate correctly
         foreach (var role in roles)
         {
             claims.Add(new Claim("role", role));
@@ -157,6 +176,7 @@ public class AuthController : ControllerBase
             user.Email ?? string.Empty,
             roles,
             tokenString,
-            expiresAt);
+            expiresAt,
+            user.Interests);
     }
 }

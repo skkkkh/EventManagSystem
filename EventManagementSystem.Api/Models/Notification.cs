@@ -7,7 +7,10 @@ public enum NotificationType
     BookingConfirmation = 0,
     EventReminder = 1,
     Recommendation = 2,
-    General = 3
+    General = 3,
+    EventCancelled = 4,
+    EventUpdated = 5,
+    CapacityReached = 6
 }
 
 public class Notification

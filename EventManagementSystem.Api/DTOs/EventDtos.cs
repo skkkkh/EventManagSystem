@@ -17,6 +17,12 @@ public class CreateEventDto
     [MaxLength(300)]
     public string? Location { get; set; }
 
+    [MaxLength(200)]
+    public string? Organizer { get; set; } // Added
+
+    [MaxLength(2000)]
+    public string? ImageUrl { get; set; }
+
     [Required]
     public DateTime StartDateTime { get; set; }
 
@@ -48,6 +54,12 @@ public class UpdateEventDto
     [MaxLength(300)]
     public string? Location { get; set; }
 
+    [MaxLength(200)]
+    public string? Organizer { get; set; } // Added
+
+    [MaxLength(2000)]
+    public string? ImageUrl { get; set; }
+
     public DateTime StartDateTime { get; set; }
     public DateTime EndDateTime { get; set; }
 
@@ -70,6 +82,8 @@ public class EventDto
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? Location { get; set; }
+    public string? Organizer { get; set; } // Added
+    public string? ImageUrl { get; set; }
     public DateTime StartDateTime { get; set; }
     public DateTime EndDateTime { get; set; }
     public int Capacity { get; set; }
@@ -91,6 +105,8 @@ public class EventDto
         Title = e.Title,
         Description = e.Description,
         Location = e.Location,
+        Organizer = e.Organizer, // Added mapping
+        ImageUrl = e.ImageUrl,
         StartDateTime = e.StartDateTime,
         EndDateTime = e.EndDateTime,
         Capacity = e.Capacity,
@@ -101,8 +117,7 @@ public class EventDto
             .Select(v => new CustomFieldValueDto(v.CustomFieldId, v.Value))
             .ToList(),
         Category = e.Category.ToString(),
-        Price = e.Price
-        ,
+        Price = e.Price,
         IsExpired = e.EndDateTime < DateTime.UtcNow
     };
 }

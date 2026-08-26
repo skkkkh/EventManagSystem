@@ -21,6 +21,10 @@ public class RegisterDto
     // Optional: caller can request a role at registration time.
     // Defaults to "Attendee" if not provided or not a valid role.
     public string? Role { get; set; }
+
+    // Optional free-text interests, e.g. "tech, science, entertainment"
+    [MaxLength(500)]
+    public string? Interests { get; set; }
 }
 
 public class LoginDto
@@ -33,11 +37,18 @@ public class LoginDto
     public string Password { get; set; } = string.Empty;
 }
 
+public class UpdateInterestsDto
+{
+    [MaxLength(500)]
+    public string? Interests { get; set; }
+}
+
 public record AuthResponseDto(
     int UserId,
     string Name,
     string Email,
     IList<string> Roles,
     string Token,
-    DateTime ExpiresAt
+    DateTime ExpiresAt,
+    string? Interests
 );
