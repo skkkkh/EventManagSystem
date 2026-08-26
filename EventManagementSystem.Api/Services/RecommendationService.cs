@@ -13,10 +13,12 @@ namespace EventManagementSystem.Api.Services;
 public class RecommendationService : IRecommendationService
 {
     private readonly IUnitOfWork _uow;
+    private readonly IReasonEnhancer _reasonEnhancer;
 
-    public RecommendationService(IUnitOfWork uow)
+    public RecommendationService(IUnitOfWork uow, IReasonEnhancer reasonEnhancer)
     {
         _uow = uow;
+        _reasonEnhancer = reasonEnhancer;
     }
 
     private async Task<int> GetBookedCount(int eventId)
@@ -88,23 +90,27 @@ public class RecommendationService : IRecommendationService
         .Take(count)
         .ToList();
 
-        var result = scored.Select(s =>
+        var result = new List<RecommendationDto>();
+        foreach (var s in scored)
         {
             var dto = EventDto.FromEntity(s.Event);
             dto.SeatsRemaining = s.SeatsRemaining;
 
-            string reason;
+            string fallbackReason;
             if (s.InterestOverlap > 0 && s.CategoryMatch)
-                reason = $"Matches your interests and past {s.Event.Category} events";
+                fallbackReason = $"Matches your interests and past {s.Event.Category} events";
             else if (s.InterestOverlap > 0)
-                reason = "Matches your stated interests";
+                fallbackReason = "Matches your stated interests";
             else if (s.CategoryMatch)
-                reason = $"Because you attended {s.Event.Category} events before";
+                fallbackReason = $"Because you attended {s.Event.Category} events before";
             else
-                reason = "Upcoming event";
+                fallbackReason = "Upcoming event";
 
-            return new RecommendationDto(dto, reason);
-        }).ToList();
+            var reason = await _reasonEnhancer.GetNaturalReasonAsync(
+                s.Event.Title, s.Event.Category.ToString(), fallbackReason, CancellationToken.None);
+
+            result.Add(new RecommendationDto(dto, reason));
+        }
 
         return result;
     }
