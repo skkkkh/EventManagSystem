@@ -1,5 +1,6 @@
 ﻿using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
+using EventManagementSystem.Api.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -19,6 +20,7 @@ public class AuthController : ControllerBase
     private readonly SignInManager<User> _signInManager;
     private readonly RoleManager<IdentityRole<int>> _roleManager;
     private readonly IConfiguration _configuration;
+    private readonly IIdentificationHasher _idHasher;
 
     private static readonly string[] AllowedSelfRegisterRoles = { "Attendee", "Organizer" };
 
@@ -26,12 +28,14 @@ public class AuthController : ControllerBase
         UserManager<User> userManager,
         SignInManager<User> signInManager,
         RoleManager<IdentityRole<int>> roleManager,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IIdentificationHasher idHasher)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _roleManager = roleManager;
         _configuration = configuration;
+        _idHasher = idHasher;
     }
 
     [HttpPost("register")]
@@ -41,6 +45,12 @@ public class AuthController : ControllerBase
         if (existing != null) return BadRequest("A user with this email already exists.");
 
         var role = AllowedSelfRegisterRoles.Contains(dto.Role) ? dto.Role! : "Attendee";
+
+        // Organizers must provide an identification number; other roles may omit it.
+        if (role == "Organizer" && string.IsNullOrWhiteSpace(dto.IdentificationNumber))
+        {
+            return BadRequest("Identification number is required for organiser registration.");
+        }
 
         var user = new User
         {
@@ -52,6 +62,14 @@ public class AuthController : ControllerBase
             Phone = dto.Phone,
             RegistrationDate = DateTime.UtcNow
         };
+
+        // Hash the ID number (if provided) before the user even exists in the DB —
+        // PasswordHasher<User> only needs the user object as a type marker, not a saved Id.
+        if (!string.IsNullOrWhiteSpace(dto.IdentificationNumber))
+        {
+            user.IdentificationNumberHash = _idHasher.Hash(user, dto.IdentificationNumber);
+            user.IdentificationNumberLast4 = _idHasher.GetLast4(dto.IdentificationNumber);
+        }
 
         var result = await _userManager.CreateAsync(user, dto.Password);
         if (!result.Succeeded) return BadRequest(result.Errors.Select(e => e.Description));

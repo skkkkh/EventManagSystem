@@ -25,6 +25,11 @@ public class RegisterDto
     // Optional free-text interests, e.g. "tech, science, entertainment"
     [MaxLength(500)]
     public string? Interests { get; set; }
+
+    // Raw identification number (CNIC/student ID/employee ID/etc.).
+    // Never stored as-is — hashed immediately in the registration handler.
+    [MaxLength(100)]
+    public string? IdentificationNumber { get; set; }
 }
 
 public class LoginDto

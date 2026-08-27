@@ -9,8 +9,15 @@ export const authService = {
     return response.data;
   },
 
-  register: async (name, email, password, role, interests) => {
-    const response = await API.post('/api/auth/register', { name, email, password, role, interests });
+  register: async (name, email, password, role, interests, identificationNumber) => {
+    const response = await API.post('/api/auth/register', {
+      name,
+      email,
+      password,
+      role,
+      interests,
+      identificationNumber
+    });
     if (response.data.token) {
       localStorage.setItem('user', JSON.stringify(response.data));
     }

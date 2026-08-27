@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { eventService } from './eventService';
 
+const API_ORIGIN = 'https://localhost:7080'; // matches eventService.js API base
+
 function Home() {
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -59,10 +61,19 @@ function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 {events.map((ev) => (
                     <div key={ev.id} style={{ background: '#1e1e1e', padding: '20px', borderRadius: '8px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                            <h3 style={{ margin: '0 0 8px 0' }}>{ev.title}</h3>
-                            <p style={{ margin: '0 0 5px 0', color: '#bbb' }}>{ev.description}</p>
-                            <small style={{ color: '#888' }}>Location: {ev.location || 'N/A'} | Capacity: {ev.capacity || 'Unlimited'}</small>
+                        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                            {ev.imageUrl && (
+                                <img
+                                    src={`${API_ORIGIN}${ev.imageUrl}`}
+                                    alt={ev.title}
+                                    style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }}
+                                />
+                            )}
+                            <div>
+                                <h3 style={{ margin: '0 0 8px 0' }}>{ev.title}</h3>
+                                <p style={{ margin: '0 0 5px 0', color: '#bbb' }}>{ev.description}</p>
+                                <small style={{ color: '#888' }}>Location: {ev.location || 'N/A'} | Capacity: {ev.capacity || 'Unlimited'}</small>
+                            </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button 

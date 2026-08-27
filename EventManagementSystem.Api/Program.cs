@@ -123,6 +123,7 @@ builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Progr
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddHttpClient<IReasonEnhancer, GeminiReasonEnhancer>();
+builder.Services.AddScoped<IIdentificationHasher, IdentificationHasher>();
 
 builder.Services.AddCors(options =>
 {
@@ -149,6 +150,8 @@ app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "Event Management System API v1");
 });
+
+app.UseStaticFiles(); // serves files from wwwroot, including /uploads/...
 
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
