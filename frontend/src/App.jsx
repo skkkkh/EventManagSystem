@@ -3,6 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react
 import { eventService } from './eventService';
 import { authService } from './authService';
 import { bookingService } from './bookingService';
+import { reviewService } from './reviewService';
+import { groupService } from './groupService';
+import { userService } from './userService';
 import { recommendationService } from './recommendationService';
 import NotificationBell from './components/NotificationBell';
 import Login from './pages/Login';
@@ -25,6 +28,11 @@ const fontDisplay = "'Fraunces', Georgia, serif";
 const fontBody = "'Inter', 'Segoe UI', sans-serif";
 
 const CATEGORY_OPTIONS = ['Conference', 'Workshop', 'Meeting', 'Shows', 'Other'];
+// Capacity is a real number in the database (it's used to calculate available
+// seats), so "Unlimited" isn't stored as text — it's this large sentinel value
+// instead. Anywhere capacity is displayed, a value at or above this shows
+// "Unlimited" instead of the raw number.
+const UNLIMITED_CAPACITY = 999999;
 const INTEREST_OPTIONS = ['Technology', 'Science', 'Entertainment', 'Business', 'Sports', 'Art & Culture', 'Health & Wellness', 'Education'];
 
 function GlobalStyle() {
@@ -89,7 +97,11 @@ function EventCard({ event, onRegister, reason }) {
   const organizer = event.organizer || event.Organizer || 'General Host';
   const category = event.category || event.Category;
   const seatsRemaining = event.seatsRemaining ?? event.SeatsRemaining;
+  const capacity = event.capacity ?? event.Capacity;
+  const isUnlimited = capacity >= UNLIMITED_CAPACITY;
   const isFull = seatsRemaining === 0;
+  const price = event.price ?? event.Price;
+  const isFree = !price || price <= 0;
 
   return (
     <div className="es-card" style={{ background: colors.card, borderRadius: '18px', boxShadow: '0 6px 20px rgba(127,19,48,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -103,7 +115,11 @@ function EventCard({ event, onRegister, reason }) {
           <span style={{ background: colors.roseSoft, color: colors.wine, padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}>
             🏛️ {organizer}
           </span>
-          {typeof seatsRemaining === 'number' && (
+          {isUnlimited ? (
+            <span style={{ background: '#DCFCE7', color: '#166534', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 700 }}>
+              ♾️ Unlimited spots
+            </span>
+          ) : typeof seatsRemaining === 'number' && (
             <span style={{
               background: isFull ? '#FEE2E2' : '#DCFCE7',
               color: isFull ? '#991B1B' : '#166534',
@@ -116,11 +132,16 @@ function EventCard({ event, onRegister, reason }) {
             </span>
           )}
         </div>
-        {category && (
-          <span style={{ display: 'inline-block', background: colors.teal, color: '#fff', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.3px' }}>
-            {category.toUpperCase()}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+          {category && (
+            <span style={{ display: 'inline-block', background: colors.teal, color: '#fff', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.3px' }}>
+              {category.toUpperCase()}
+            </span>
+          )}
+          <span style={{ display: 'inline-block', background: isFree ? colors.roseSoft : colors.amber, color: isFree ? colors.wine : '#fff', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.3px' }}>
+            {isFree ? 'FREE' : `Rs. ${Number(price).toLocaleString()}`}
           </span>
-        )}
+        </div>
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', marginBottom: '14px' }}>
           <div style={{ flexShrink: 0, width: '52px', height: '52px', borderRadius: '12px', background: colors.amber, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
             <span style={{ fontSize: '18px', fontWeight: 700, fontFamily: fontDisplay }}>{day}</span>
@@ -311,6 +332,8 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [booking, setBooking] = useState(false);
   const [activeTab, setActiveTab] = useState('interests');
+  const [reserveModalEvent, setReserveModalEvent] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -345,12 +368,17 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
     fetchRecommendations();
   };
 
-  const handleReserve = async (event) => {
+  const handleReserve = (event) => {
     if (!currentUser) {
       navigate('/login');
       return;
     }
+    setPaymentMethod('');
+    setReserveModalEvent(event);
+  };
 
+  const confirmReservation = async () => {
+    const event = reserveModalEvent;
     const eventId = event.id || event.eventId;
     const title = event.title || event.name;
 
@@ -365,9 +393,12 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
         cardNumber: '',
         cardName: '',
         cardExpiry: '',
+        paymentMethod,
       });
+
       await refreshAll();
-      alert(`Successfully reserved spot for: ${title}`);
+      setReserveModalEvent(null);
+      alert(`Successfully reserved spot for: ${title} (Payment: ${paymentMethod})`);
     } catch (err) {
       const msg = err.response?.data || 'Failed to reserve spot. Please try again.';
       alert(typeof msg === 'string' ? msg : 'Failed to reserve spot. Please try again.');
@@ -385,6 +416,8 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {currentUser ? (
               <>
+                <Link to="/my-bookings" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>My Bookings</Link>
+                <Link to="/rate-events" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>Rate Events</Link>
                 <NotificationBell currentUser={currentUser} />
                 <span style={{ fontSize: '13px', color: colors.muted }}>Hi, <strong>{currentUser.name}</strong></span>
                 <button
@@ -511,6 +544,52 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
           </>
         )}
       </div>
+
+      {reserveModalEvent && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(45,35,38,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: colors.card, borderRadius: '18px', padding: '30px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontFamily: fontDisplay, color: colors.wine, fontSize: '22px' }}>Confirm Reservation</h3>
+            <p style={{ margin: '0 0 20px 0', color: colors.muted, fontSize: '14px' }}>
+              {reserveModalEvent.title || reserveModalEvent.name}
+            </p>
+
+            {(reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions) && (
+              <div style={{ background: colors.roseSoft, borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+                <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: colors.wine, letterSpacing: '0.3px' }}>HOW TO PAY THE ORGANISER</p>
+                <p style={{ margin: 0, fontSize: '13px', color: colors.ink, whiteSpace: 'pre-wrap' }}>
+                  {reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions}
+                </p>
+              </div>
+            )}
+
+            <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600, color: colors.ink }}>How would you like to pay?</p>
+            <input
+              type="text"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              placeholder="e.g. Bank Card, EasyPaisa, JazzCash, Cash on Delivery..."
+              style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', border: `1.5px solid ${colors.roseSoft}`, outline: 'none', fontSize: '14px', color: colors.ink, marginBottom: '24px' }}
+            />
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setReserveModalEvent(null)}
+                disabled={booking}
+                style={{ flex: 1, background: '#E5E7EB', color: colors.ink, border: 'none', padding: '12px', borderRadius: '10px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmReservation}
+                disabled={booking || !paymentMethod.trim()}
+                style={{ flex: 1, background: colors.wine, color: '#fff', border: 'none', padding: '12px', borderRadius: '10px', cursor: (booking || !paymentMethod.trim()) ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: (booking || !paymentMethod.trim()) ? 0.6 : 1 }}
+              >
+                {booking ? 'Confirming...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -521,12 +600,21 @@ function CreateEventView() {
   const [organizer, setOrganizer] = useState('');
   const [location, setLocation] = useState('');
   const [capacity, setCapacity] = useState('');
+  const [unlimitedCapacity, setUnlimitedCapacity] = useState(false);
+  const [price, setPrice] = useState('');
+  const [paymentInstructions, setPaymentInstructions] = useState('');
   const [category, setCategory] = useState('Conference');
+  const [groups, setGroups] = useState([]);
+  const [groupId, setGroupId] = useState('');
   const [startDateTime, setStartDateTime] = useState('');
   const [endDateTime, setEndDateTime] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    groupService.getMyGroups().then(setGroups).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -539,7 +627,10 @@ function CreateEventView() {
         description,
         organizer: organizer || 'General Society',
         location: location || 'Default Location',
-        capacity: capacity ? parseInt(capacity, 10) : 100,
+        capacity: unlimitedCapacity ? UNLIMITED_CAPACITY : (capacity ? parseInt(capacity, 10) : 100),
+        price: price ? parseFloat(price) : 0,
+        paymentInstructions: paymentInstructions.trim() || null,
+        groupId: groupId ? parseInt(groupId, 10) : null,
         category,
         startDateTime: startDateTime ? new Date(startDateTime).toISOString() : new Date().toISOString(),
         endDateTime: endDateTime ? new Date(endDateTime).toISOString() : new Date(Date.now() + 86400000).toISOString(),
@@ -604,8 +695,49 @@ function CreateEventView() {
           </div>
 
           <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Restrict to Group (optional)</label>
+            <select
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody }}
+            >
+              <option value="">Public — anyone can see and book</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Capacity</label>
-            <input type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 150" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+            <input
+              type="number"
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              placeholder="e.g. 150"
+              disabled={unlimitedCapacity}
+              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', background: unlimitedCapacity ? '#F3F3F3' : '#fff', marginBottom: '8px' }}
+            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: colors.muted, cursor: 'pointer' }}>
+              <input type="checkbox" checked={unlimitedCapacity} onChange={(e) => setUnlimitedCapacity(e.target.checked)} />
+              Unlimited (e.g. an open ground with no fixed seating)
+            </label>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Price</label>
+            <input type="number" step="0.01" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 500 (leave blank for free)" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Payment Instructions (only shown if the event isn't free)</label>
+            <textarea
+              value={paymentInstructions}
+              onChange={(e) => setPaymentInstructions(e.target.value)}
+              placeholder="e.g. Send to JazzCash 03XX-XXXXXXX (Ali Khan), or pay cash at the front desk before entry"
+              rows={2}
+              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody }}
+            />
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -630,12 +762,23 @@ function CreateEventView() {
 
 function AdminPanel({ currentUser, setCurrentUser }) {
   const [events, setEvents] = useState([]);
+  const [pastOrganizedEvents, setPastOrganizedEvents] = useState([]);
+  const [attendedPastBookings, setAttendedPastBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [editingEvent, setEditingEvent] = useState(null);
+  const [panelTab, setPanelTab] = useState('upcoming'); // 'upcoming' | 'past' | 'groups'
+  const [pastSubTab, setPastSubTab] = useState('attended'); // 'attended' | 'organized'
+  const [editGroups, setEditGroups] = useState([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (currentUser) {
+      groupService.getMyGroups().then(setEditGroups).catch(() => {});
+    }
+  }, [currentUser]);
 
   const fetchEvents = () => {
     eventService.getAllEvents()
@@ -643,9 +786,29 @@ function AdminPanel({ currentUser, setCurrentUser }) {
       .catch(() => setLoading(false));
   };
 
+  const fetchPastOrganizedEvents = () => {
+    eventService.getAllEvents(true) // includeExpired — backend already returns only ended events for this flag
+      .then((data) => {
+        const myId = currentUser?.userId;
+        setPastOrganizedEvents(data.filter((e) => (e.organizerId ?? e.OrganizerId) === myId));
+      })
+      .catch(() => {});
+  };
+
+  const fetchAttendedPastBookings = () => {
+    bookingService.getMine()
+      .then((data) => {
+        const now = new Date();
+        setAttendedPastBookings(data.filter((b) => new Date(b.eventEndDateTime) < now));
+      })
+      .catch(() => {});
+  };
+
   useEffect(() => {
     if (currentUser) {
       fetchEvents();
+      fetchPastOrganizedEvents();
+      fetchAttendedPastBookings();
     }
   }, [currentUser]);
 
@@ -666,6 +829,7 @@ function AdminPanel({ currentUser, setCurrentUser }) {
       await eventService.deleteEvent(eventId);
       alert('Event deleted successfully.');
       fetchEvents();
+      fetchPastOrganizedEvents();
     } catch (err) {
       alert('Failed to delete event: ' + err.message);
     }
@@ -685,7 +849,11 @@ function AdminPanel({ currentUser, setCurrentUser }) {
       description: event.description || '',
       organizer: event.organizer || event.Organizer || '',
       location: event.location || '',
-      capacity: event.capacity || 100,
+      capacity: (event.capacity || 100) >= UNLIMITED_CAPACITY ? '' : (event.capacity || 100),
+      unlimitedCapacity: (event.capacity || 0) >= UNLIMITED_CAPACITY,
+      price: event.price ?? event.Price ?? 0,
+      paymentInstructions: event.paymentInstructions ?? event.PaymentInstructions ?? '',
+      groupId: event.groupId ?? event.GroupId ?? '',
       category: event.category || event.Category || 'Other',
       startDateTime: formatLocalDateTime(event.startDateTime || event.StartDateTime),
       endDateTime: formatLocalDateTime(event.endDateTime || event.EndDateTime),
@@ -702,7 +870,10 @@ function AdminPanel({ currentUser, setCurrentUser }) {
         description: editingEvent.description,
         organizer: editingEvent.organizer || 'General Society',
         location: editingEvent.location || 'Default Location',
-        capacity: editingEvent.capacity ? parseInt(editingEvent.capacity, 10) : 100,
+        capacity: editingEvent.unlimitedCapacity ? UNLIMITED_CAPACITY : (editingEvent.capacity ? parseInt(editingEvent.capacity, 10) : 100),
+        price: editingEvent.price ? parseFloat(editingEvent.price) : 0,
+        paymentInstructions: (editingEvent.paymentInstructions || '').trim() || null,
+        groupId: editingEvent.groupId ? parseInt(editingEvent.groupId, 10) : null,
         category: editingEvent.category,
         startDateTime: editingEvent.startDateTime ? new Date(editingEvent.startDateTime).toISOString() : new Date().toISOString(),
         endDateTime: editingEvent.endDateTime ? new Date(editingEvent.endDateTime).toISOString() : new Date(Date.now() + 86400000).toISOString(),
@@ -714,6 +885,7 @@ function AdminPanel({ currentUser, setCurrentUser }) {
       alert('Event updated successfully! 🎉');
       setEditingEvent(null);
       fetchEvents();
+      fetchPastOrganizedEvents();
     } catch (err) {
       alert('Failed to update event: ' + err.message);
     }
@@ -797,8 +969,49 @@ function AdminPanel({ currentUser, setCurrentUser }) {
               </div>
 
               <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Restrict to Group (optional)</label>
+                <select
+                  value={editingEvent.groupId || ''}
+                  onChange={(e) => setEditingEvent({ ...editingEvent, groupId: e.target.value })}
+                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody }}
+                >
+                  <option value="">Public — anyone can see and book</option>
+                  {editGroups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Capacity</label>
-                <input type="number" value={editingEvent.capacity} onChange={(e) => setEditingEvent({ ...editingEvent, capacity: e.target.value })} placeholder="Capacity" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+                <input
+                  type="number"
+                  value={editingEvent.capacity}
+                  onChange={(e) => setEditingEvent({ ...editingEvent, capacity: e.target.value })}
+                  placeholder="Capacity"
+                  disabled={editingEvent.unlimitedCapacity}
+                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', background: editingEvent.unlimitedCapacity ? '#F3F3F3' : '#fff', marginBottom: '8px' }}
+                />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: colors.muted, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!editingEvent.unlimitedCapacity} onChange={(e) => setEditingEvent({ ...editingEvent, unlimitedCapacity: e.target.checked })} />
+                  Unlimited (e.g. an open ground with no fixed seating)
+                </label>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Price</label>
+                <input type="number" step="0.01" min="0" value={editingEvent.price} onChange={(e) => setEditingEvent({ ...editingEvent, price: e.target.value })} placeholder="e.g. 500 (leave blank for free)" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Payment Instructions</label>
+                <textarea
+                  value={editingEvent.paymentInstructions || ''}
+                  onChange={(e) => setEditingEvent({ ...editingEvent, paymentInstructions: e.target.value })}
+                  placeholder="e.g. Send to JazzCash 03XX-XXXXXXX (Ali Khan), or pay cash at the front desk before entry"
+                  rows={2}
+                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody }}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -821,39 +1034,565 @@ function AdminPanel({ currentUser, setCurrentUser }) {
         )}
 
         <div style={{ background: colors.card, padding: '30px', borderRadius: '16px', border: `1px solid ${colors.roseSoft}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
             <h3 style={{ margin: 0, fontFamily: fontDisplay, fontSize: '20px', color: colors.ink }}>Manage Events Database</h3>
-            <button 
-              onClick={() => navigate('/create-event')} 
+            <button
+              onClick={() => navigate('/create-event')}
               style={{ background: colors.wine, color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
             >
               + Add Event
             </button>
           </div>
 
-          {loading && <p style={{ color: colors.muted }}>Loading...</p>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {events.map((event) => {
-              const eventId = event.id || event.eventId;
-              const org = event.organizer || event.Organizer;
-              return (
-                <div key={eventId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
-                  <div>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '4px' }}>
-                      <h4 style={{ margin: 0, fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{event.title || event.name}</h4>
-                      {org && <span style={{ fontSize: '11px', background: colors.roseSoft, color: colors.wine, padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>{org}</span>}
-                    </div>
-                    <p style={{ margin: 0, fontSize: '13px', color: colors.muted }}>{event.description}</p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button onClick={() => handleStartEditing(event)} style={{ background: colors.teal, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Edit</button>
-                    <button onClick={() => handleDelete(eventId)} style={{ background: '#b3261e', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Delete</button>
-                  </div>
-                </div>
-              );
-            })}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            {[
+              { key: 'upcoming', label: 'Upcoming Events' },
+              { key: 'past', label: 'Past Events' },
+              { key: 'groups', label: 'Groups' },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setPanelTab(t.key)}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: panelTab === t.key ? colors.wine : '#F3EDEF',
+                  color: panelTab === t.key ? '#fff' : colors.ink,
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
+
+          {panelTab === 'upcoming' && (
+            <>
+              {loading && <p style={{ color: colors.muted }}>Loading...</p>}
+              {!loading && events.length === 0 && <EmptyPanelState text="No upcoming events yet." />}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {events.map((event) => (
+                  <ManagedEventRow key={event.id || event.eventId} event={event} groups={editGroups} onEdit={handleStartEditing} onDelete={handleDelete} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {panelTab === 'past' && (
+            <>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+                {[
+                  { key: 'attended', label: 'Attended by User' },
+                  { key: 'organized', label: 'Overall Past Events' },
+                ].map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => setPastSubTab(t.key)}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '20px',
+                      border: `1.5px solid ${pastSubTab === t.key ? colors.wine : colors.roseSoft}`,
+                      background: pastSubTab === t.key ? colors.wine : '#fff',
+                      color: pastSubTab === t.key ? '#fff' : colors.ink,
+                      fontWeight: 600,
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {pastSubTab === 'attended' && (
+                <>
+                  {attendedPastBookings.length === 0 && <EmptyPanelState text="No past events you've attended yet." />}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    {attendedPastBookings.map((b) => (
+                      <div key={b.bookingId} style={{ padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
+                        <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{b.eventTitle}</h4>
+                        <p style={{ margin: 0, fontSize: '13px', color: colors.muted }}>
+                          {new Date(b.eventStartDateTime).toLocaleDateString()} · {b.status} · {b.isPaid ? `Paid (${b.paymentMethod || 'method not recorded'})` : 'Not paid'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {pastSubTab === 'organized' && (
+                <>
+                  {pastOrganizedEvents.length === 0 && <EmptyPanelState text="No past events you've organized yet." />}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    {pastOrganizedEvents.map((event) => (
+                      <ManagedEventRow key={event.id || event.eventId} event={event} groups={editGroups} onEdit={handleStartEditing} onDelete={handleDelete} />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {panelTab === 'groups' && <GroupsPanel />}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyPanelState({ text }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '30px', background: colors.bg, borderRadius: '10px', border: `1px solid ${colors.roseSoft}` }}>
+      <p style={{ color: colors.muted, fontSize: '14px', margin: 0 }}>{text}</p>
+    </div>
+  );
+}
+
+function ManagedEventRow({ event, groups, onEdit, onDelete }) {
+  const eventId = event.id || event.eventId;
+  const org = event.organizer || event.Organizer;
+  const groupId = event.groupId ?? event.GroupId;
+  const group = groupId ? (groups || []).find((g) => g.id === groupId) : null;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
+      <div>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '4px' }}>
+          <h4 style={{ margin: 0, fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{event.title || event.name}</h4>
+          {org && <span style={{ fontSize: '11px', background: colors.roseSoft, color: colors.wine, padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>{org}</span>}
+          {groupId && (
+            <span style={{ fontSize: '11px', background: colors.teal, color: '#fff', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
+              🔒 {group ? group.name : 'Restricted'}
+            </span>
+          )}
+          <EventRatingBadge eventId={eventId} />
+        </div>
+        <p style={{ margin: 0, fontSize: '13px', color: colors.muted }}>{event.description}</p>
+      </div>
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button onClick={() => onEdit(event)} style={{ background: colors.teal, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Edit</button>
+        <button onClick={() => onDelete(eventId)} style={{ background: '#b3261e', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Delete</button>
+      </div>
+    </div>
+  );
+}
+
+function GroupsPanel() {
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [openGroupId, setOpenGroupId] = useState(null);
+
+  const fetchGroups = () => {
+    groupService.getMyGroups()
+      .then((data) => { setGroups(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchGroups(); }, []);
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    if (!newGroupName.trim()) return;
+    setCreating(true);
+    try {
+      await groupService.createGroup(newGroupName.trim());
+      setNewGroupName('');
+      fetchGroups();
+    } catch (err) {
+      const msg = err.response?.data || 'Failed to create group.';
+      alert(typeof msg === 'string' ? msg : 'Failed to create group.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div>
+      <form onSubmit={handleCreateGroup} style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={newGroupName}
+          onChange={(e) => setNewGroupName(e.target.value)}
+          placeholder="New group name, e.g. ACM Committee"
+          style={{ flex: 1, minWidth: '220px', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }}
+        />
+        <button
+          type="submit"
+          disabled={creating || !newGroupName.trim()}
+          style={{ background: colors.wine, color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: (creating || !newGroupName.trim()) ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '13px', opacity: (creating || !newGroupName.trim()) ? 0.6 : 1 }}
+        >
+          {creating ? 'Creating...' : '+ Add a Group'}
+        </button>
+      </form>
+
+      {loading && <p style={{ color: colors.muted }}>Loading groups...</p>}
+      {!loading && groups.length === 0 && (
+        <EmptyPanelState text="No groups yet — create one above to restrict an event to a specific audience." />
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {groups.map((g) => (
+          <div key={g.id} style={{ padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h4 style={{ margin: '0 0 2px 0', fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{g.name}</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>{g.memberCount} member{g.memberCount === 1 ? '' : 's'}</p>
+              </div>
+              <button
+                onClick={() => setOpenGroupId(openGroupId === g.id ? null : g.id)}
+                style={{ background: colors.teal, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+              >
+                {openGroupId === g.id ? 'Close' : '+ Add Members'}
+              </button>
+            </div>
+
+            {openGroupId === g.id && (
+              <AddMembersPanel groupId={g.id} onMemberAdded={fetchGroups} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AddMembersPanel({ groupId, onMemberAdded }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [addingUserId, setAddingUserId] = useState(null);
+
+  const fetchMembers = () => {
+    groupService.getMembers(groupId)
+      .then((data) => { setMembers(data); setMembersLoading(false); })
+      .catch(() => setMembersLoading(false));
+  };
+
+  useEffect(() => { fetchMembers(); }, [groupId]);
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      userService.search(query.trim())
+        .then((data) => setResults(data))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  const handleAdd = async (userId) => {
+    setAddingUserId(userId);
+    try {
+      await groupService.addMember(groupId, userId);
+      setQuery('');
+      setResults([]);
+      fetchMembers();
+      if (onMemberAdded) onMemberAdded();
+    } catch (err) {
+      const msg = err.response?.data || 'Failed to add member.';
+      alert(typeof msg === 'string' ? msg : 'Failed to add member.');
+    } finally {
+      setAddingUserId(null);
+    }
+  };
+
+  const memberUserIds = new Set(members.map((m) => m.userId));
+
+  return (
+    <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px dashed ${colors.roseSoft}` }}>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search by name or email to add..."
+        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontSize: '13px', marginBottom: '10px' }}
+      />
+
+      {searching && <p style={{ fontSize: '12px', color: colors.muted, margin: '0 0 10px 0' }}>Searching...</p>}
+
+      {results.length > 0 && (
+        <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {results.map((u) => (
+            <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: colors.card, borderRadius: '6px', fontSize: '13px' }}>
+              <span>{u.name} <span style={{ color: colors.muted }}>({u.email})</span></span>
+              {memberUserIds.has(u.id) ? (
+                <span style={{ fontSize: '11px', color: colors.muted }}>Already a member</span>
+              ) : (
+                <button
+                  onClick={() => handleAdd(u.id)}
+                  disabled={addingUserId === u.id}
+                  style={{ background: colors.wine, color: '#fff', border: 'none', padding: '5px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                >
+                  {addingUserId === u.id ? 'Adding...' : 'Add'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p style={{ fontWeight: 600, fontSize: '13px', color: colors.ink, margin: '0 0 8px 0' }}>Current members ({members.length})</p>
+      {membersLoading ? (
+        <p style={{ fontSize: '13px', color: colors.muted }}>Loading...</p>
+      ) : members.length === 0 ? (
+        <p style={{ fontSize: '13px', color: colors.muted }}>No members yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {members.map((m) => (
+            <p key={m.id} style={{ margin: 0, fontSize: '13px', color: colors.ink }}>
+              {m.userName} <span style={{ color: colors.muted }}>({m.userEmail})</span>
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EventRatingBadge({ eventId }) {
+  const [summary, setSummary] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    reviewService.getSummary(eventId)
+      .then((data) => { if (!cancelled) setSummary(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  if (!summary) return null;
+
+  if (summary.totalReviews === 0) {
+    return (
+      <span style={{ fontSize: '11px', color: colors.muted, fontWeight: 600 }}>
+        No ratings yet
+      </span>
+    );
+  }
+
+  return (
+    <span style={{ fontSize: '12px', color: colors.ink, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+      ⭐ {summary.averageRating.toFixed(1)}
+      <span style={{ color: colors.muted, fontWeight: 500 }}>
+        ({summary.totalReviews} review{summary.totalReviews === 1 ? '' : 's'})
+      </span>
+    </span>
+  );
+}
+
+function MyBookingsView({ currentUser }) {
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+    bookingService.getMine()
+      .then((data) => { setBookings(data); setLoading(false); })
+      .catch(() => { setError('Failed to load your bookings.'); setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  const statusColor = (status) => {
+    if (status === 'Confirmed') return { bg: '#DCFCE7', fg: '#166534' };
+    if (status === 'Cancelled') return { bg: '#FEE2E2', fg: '#991B1B' };
+    return { bg: '#FEF3C7', fg: '#92400E' }; // Pending
+  };
+
+  return (
+    <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', padding: '40px 24px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h2 style={{ fontFamily: fontDisplay, color: colors.wine, margin: 0, fontSize: '28px' }}>My Bookings</h2>
+          <Link to="/events" style={{ color: colors.muted, textDecoration: 'none', fontSize: '14px', fontWeight: 600 }}>← Back</Link>
+        </div>
+
+        {loading && <p style={{ color: colors.muted }}>Loading...</p>}
+        {error && <p style={{ color: '#b3261e' }}>{error}</p>}
+
+        {!loading && !error && bookings.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', background: colors.card, borderRadius: '16px', border: `1px solid ${colors.roseSoft}` }}>
+            <p style={{ color: colors.muted, fontSize: '15px', margin: 0 }}>
+              You haven't booked any events yet.
+            </p>
+          </div>
+        )}
+
+        {bookings.map((b) => {
+          const sc = statusColor(b.status);
+          return (
+            <div key={b.bookingId} style={{ background: colors.card, borderRadius: '14px', padding: '20px 24px', border: `1px solid ${colors.roseSoft}`, marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
+                <h4 style={{ margin: 0, fontFamily: fontDisplay, color: colors.ink, fontSize: '17px' }}>{b.eventTitle}</h4>
+                <span style={{ background: sc.bg, color: sc.fg, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {b.status}
+                </span>
+              </div>
+              <p style={{ margin: '0 0 4px 0', color: colors.muted, fontSize: '13px' }}>
+                Event date: {new Date(b.eventStartDateTime).toLocaleString()}
+              </p>
+              <p style={{ margin: '0 0 4px 0', color: colors.muted, fontSize: '13px' }}>
+                Booked on {new Date(b.bookedAt).toLocaleString()} · Qty: {b.quantity}
+              </p>
+              <p style={{ margin: 0, color: colors.ink, fontSize: '13px', fontWeight: 600 }}>
+                {b.isPaid ? `Paid — ${b.paymentMethod || 'method not recorded'} · Total: Rs. ${Number(b.totalAmount).toLocaleString()}` : 'Not yet paid'}
+              </p>
+              {b.paymentInstructions && (
+                <div style={{ background: colors.bg, borderRadius: '8px', padding: '10px 12px', marginTop: '10px' }}>
+                  <p style={{ margin: '0 0 2px 0', fontSize: '10px', fontWeight: 700, color: colors.wine, letterSpacing: '0.3px' }}>HOW TO PAY THE ORGANISER</p>
+                  <p style={{ margin: 0, fontSize: '12px', color: colors.ink, whiteSpace: 'pre-wrap' }}>{b.paymentInstructions}</p>
+                </div>
+              )}
+              <p style={{ margin: '8px 0 0 0', color: colors.muted, fontSize: '11px' }}>
+                Booking reference: #{b.bookingId}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StarRating({ value, onChange }) {
+  const [hover, setHover] = useState(0);
+  return (
+    <div style={{ display: 'flex', gap: '4px' }}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span
+          key={star}
+          onClick={() => onChange(star)}
+          onMouseEnter={() => setHover(star)}
+          onMouseLeave={() => setHover(0)}
+          style={{
+            cursor: 'pointer',
+            fontSize: '28px',
+            color: (hover || value) >= star ? colors.amber : colors.roseSoft,
+            lineHeight: 1,
+            userSelect: 'none',
+          }}
+        >
+          ★
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function RateEventCard({ event, onSubmitted }) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (rating < 1) {
+      setError('Please select a star rating first.');
+      return;
+    }
+    setError('');
+    setSubmitting(true);
+    try {
+      await reviewService.submitReview(event.eventId, rating, comment.trim() || null);
+      onSubmitted(event.eventId);
+    } catch (err) {
+      const msg = err.response?.data || 'Failed to submit review. Please try again.';
+      setError(typeof msg === 'string' ? msg : 'Failed to submit review. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ background: colors.card, borderRadius: '16px', padding: '24px', border: `1px solid ${colors.roseSoft}`, marginBottom: '20px' }}>
+      <h4 style={{ margin: '0 0 4px 0', fontFamily: fontDisplay, color: colors.ink, fontSize: '18px' }}>{event.title}</h4>
+      <p style={{ margin: '0 0 16px 0', color: colors.muted, fontSize: '13px' }}>
+        Attended on {new Date(event.endDateTime).toLocaleDateString()}
+      </p>
+
+      <StarRating value={rating} onChange={setRating} />
+
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Share a few words about the event (optional)"
+        rows={2}
+        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody, fontSize: '13px', margin: '14px 0' }}
+      />
+
+      {error && <p style={{ color: '#b3261e', fontSize: '13px', margin: '0 0 10px 0' }}>{error}</p>}
+
+      <button
+        onClick={handleSubmit}
+        disabled={submitting}
+        style={{ background: colors.wine, color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: submitting ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '13px', opacity: submitting ? 0.6 : 1 }}
+      >
+        {submitting ? 'Submitting...' : 'Submit Rating'}
+      </button>
+    </div>
+  );
+}
+
+function RateEventsView({ currentUser }) {
+  const [pending, setPending] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+    reviewService.getPending()
+      .then((data) => { setPending(data); setLoading(false); })
+      .catch(() => { setError('Failed to load your attended events.'); setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  const handleSubmitted = (eventId) => {
+    setPending((prev) => prev.filter((e) => e.eventId !== eventId));
+  };
+
+  return (
+    <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', padding: '40px 24px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h2 style={{ fontFamily: fontDisplay, color: colors.wine, margin: 0, fontSize: '28px' }}>Rate Your Events</h2>
+          <Link to="/events" style={{ color: colors.muted, textDecoration: 'none', fontSize: '14px', fontWeight: 600 }}>← Back</Link>
+        </div>
+
+        {loading && <p style={{ color: colors.muted }}>Loading...</p>}
+        {error && <p style={{ color: '#b3261e' }}>{error}</p>}
+
+        {!loading && !error && pending.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', background: colors.card, borderRadius: '16px', border: `1px solid ${colors.roseSoft}` }}>
+            <p style={{ color: colors.muted, fontSize: '15px', margin: 0 }}>
+              You're all caught up — no attended events waiting to be rated.
+            </p>
+          </div>
+        )}
+
+        {pending.map((event) => (
+          <RateEventCard key={event.eventId} event={event} onSubmitted={handleSubmitted} />
+        ))}
       </div>
     </div>
   );
@@ -871,6 +1610,8 @@ export default function App() {
         <Route path="/register" element={<Register setCurrentUser={setCurrentUser} />} />
         <Route path="/admin" element={<AdminPanel currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
         <Route path="/create-event" element={<CreateEventView />} />
+        <Route path="/rate-events" element={<RateEventsView currentUser={currentUser} />} />
+        <Route path="/my-bookings" element={<MyBookingsView currentUser={currentUser} />} />
       </Routes>
     </Router>
   );

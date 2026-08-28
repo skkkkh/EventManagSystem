@@ -17,6 +17,8 @@ builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(options =>
 {
+    options.CustomSchemaIds(type => type.FullName);
+
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Event Management System API",
@@ -24,33 +26,30 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Event Management System API"
     });
 
-    options.AddSecurityDefinition("Bearer",
-        new OpenApiSecurityScheme
-        {
-            Name = "Authorization",
-            Type = SecuritySchemeType.Http,
-            Scheme = "bearer",
-            BearerFormat = "JWT",
-            In = ParameterLocation.Header,
-            Description = "Enter your JWT token like: Bearer eyJhbGci..."
-        });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter your JWT token like: Bearer eyJhbGci..."
+    });
 
-    options.AddSecurityRequirement(
-        new OpenApiSecurityRequirement
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
         {
+            new OpenApiSecurityScheme
             {
-                new OpenApiSecurityScheme
+                Reference = new OpenApiReference
                 {
-                    Reference =
-                        new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                },
-                Array.Empty<string>()
-            }
-        });
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -59,16 +58,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         ?? "Data Source=eventmanagement.db"
     ));
 
-builder.Services
-    .AddIdentity<User, IdentityRole<int>>(options =>
-    {
-        options.Password.RequireDigit = true;
-        options.Password.RequireLowercase = true;
-        options.Password.RequireUppercase = false;
-        options.Password.RequireNonAlphanumeric = false;
-        options.Password.RequiredLength = 6;
-        options.User.RequireUniqueEmail = true;
-    })
+builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
+{
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireUppercase = false;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequiredLength = 6;
+    options.User.RequireUniqueEmail = true;
+})
     .AddEntityFrameworkStores<AppDbContext>()
     .AddDefaultTokenProviders();
 
@@ -76,12 +74,11 @@ var jwtKey = builder.Configuration["Jwt:Key"] ?? "EventManagementSystem_SuperSec
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "EventManagementSystem";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "EventManagementSystemUsers";
 
-builder.Services
-    .AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = "SmartScheme";
-        options.DefaultChallengeScheme = "SmartScheme";
-    })
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = "SmartScheme";
+    options.DefaultChallengeScheme = "SmartScheme";
+})
     .AddPolicyScheme("SmartScheme", "JWT or MVC Cookie", options =>
     {
         options.ForwardDefaultSelector = context =>
@@ -117,12 +114,14 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddHttpClient<IReasonEnhancer, GeminiReasonEnhancer>();
+builder.Services.AddHttpClient<IInterestMatcher, GeminiInterestMatcher>();
 builder.Services.AddScoped<IIdentificationHasher, IdentificationHasher>();
 
 builder.Services.AddCors(options =>
@@ -136,10 +135,9 @@ builder.Services.AddCors(options =>
             builder.Configuration["FrontendUrl"] ?? "https://your-deployed-frontend-domain"
         };
 
-        policy
-            .WithOrigins(allowedOrigins)
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyHeader()
+              .AllowAnyMethod();
     });
 });
 
@@ -151,8 +149,7 @@ app.UseSwaggerUI(options =>
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "Event Management System API v1");
 });
 
-app.UseStaticFiles(); // serves files from wwwroot, including /uploads/...
-
+app.UseStaticFiles();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
@@ -161,12 +158,13 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-// Seed database and ready-to-test accounts for evaluators/buyers
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     var db = services.GetRequiredService<AppDbContext>();
+
     db.Database.Migrate();
+
     await SeedRolesAndDefaultUsersAsync(services);
     await SeedEventDataAsync(db);
 }
@@ -190,7 +188,14 @@ static async Task SeedRolesAndDefaultUsersAsync(IServiceProvider services)
     var adminEmail = "admin@ems.com";
     if (await userManager.FindByEmailAsync(adminEmail) == null)
     {
-        var admin = new User { UserName = adminEmail, Email = adminEmail, Name = "System Admin", Role = "Admin", RegistrationDate = DateTime.UtcNow };
+        var admin = new User
+        {
+            UserName = adminEmail,
+            Email = adminEmail,
+            Name = "System Admin",
+            Role = "Admin",
+            RegistrationDate = DateTime.UtcNow
+        };
         var res = await userManager.CreateAsync(admin, "Admin123!");
         if (res.Succeeded) await userManager.AddToRoleAsync(admin, "Admin");
     }

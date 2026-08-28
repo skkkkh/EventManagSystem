@@ -1,4 +1,5 @@
 using EventManagementSystem.Api.CQRS.Bookings;
+using EventManagementSystem.Api.CQRS.Groups;
 using EventManagementSystem.Api.Data;
 using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -111,11 +113,54 @@ public class BookingsController : ControllerBase
         ));
     }
 
+    // Every booking the currently logged-in user has made — matched by their
+    // account (for bookings made while logged in) and by email as a fallback
+    // (covers bookings made before the account link existed).
+    [HttpGet("mine")]
+    public async Task<ActionResult<List<MyBookingDto>>> GetMyBookings()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var email = User.FindFirst(ClaimTypes.Email)?.Value;
+        int.TryParse(userIdClaim, out var userId);
+
+        var bookings = await _context.Bookings
+            .AsNoTracking()
+            .Include(b => b.Registration)
+            .Include(b => b.TicketType).ThenInclude(t => t!.Event)
+            .Include(b => b.Payment)
+            .Where(b => b.Registration != null &&
+                        (b.Registration.UserId == userId || b.Registration.Email == email))
+            .OrderByDescending(b => b.BookedAt)
+            .Select(b => new MyBookingDto(
+                b.Id,
+                b.TicketType != null && b.TicketType.Event != null ? b.TicketType.Event.Title : "Unknown Event",
+                b.TicketType != null && b.TicketType.Event != null ? b.TicketType.Event.StartDateTime : b.BookedAt,
+                b.TicketType != null && b.TicketType.Event != null ? b.TicketType.Event.EndDateTime : b.BookedAt,
+                b.Quantity,
+                b.TotalAmount,
+                b.Status.ToString(),
+                b.BookedAt,
+                b.IsPaid,
+                b.Payment != null ? b.Payment.PaymentMethod : null,
+                b.TicketType != null && b.TicketType.Event != null ? b.TicketType.Event.PaymentInstructions : null
+            ))
+            .ToListAsync();
+
+        return Ok(bookings);
+    }
+
     // Public guest checkout: create registration and booking, mark paid (mock)
     [AllowAnonymous]
     [HttpPost("guest-checkout")]
     public async Task<IActionResult> GuestCheckout([FromBody] GuestCheckoutDto dto)
     {
+        // If the caller is actually logged in (our React app always sends a
+        // token here even though the route allows anonymous access too),
+        // link the registration to their account so "my bookings" and
+        // reviews can find it later.
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int? authenticatedUserId = int.TryParse(userIdClaim, out var uid) ? uid : null;
+
         // Find or create registration for this email + event
         var existing = await _context.Registrations.FirstOrDefaultAsync(r => r.EventId == dto.EventId && r.Email == dto.Email);
         Registration registration = existing ?? new Registration
@@ -124,12 +169,19 @@ public class BookingsController : ControllerBase
             Email = dto.Email,
             Phone = dto.Phone,
             EventId = dto.EventId,
+            UserId = authenticatedUserId,
             RegisteredAt = DateTime.UtcNow
         };
 
         if (existing == null)
         {
             await _context.Registrations.AddAsync(registration);
+            await _context.SaveChangesAsync();
+        }
+        else if (existing.UserId == null && authenticatedUserId != null)
+        {
+            // Self-heal: this registration was created before this link existed.
+            existing.UserId = authenticatedUserId;
             await _context.SaveChangesAsync();
         }
 
@@ -143,7 +195,14 @@ public class BookingsController : ControllerBase
         if (ev != null && ev.EndDateTime < DateTime.UtcNow)
             return BadRequest("This event has ended and is no longer accepting bookings");
 
-        var bookingDto = new CreateBookingDto(registration.Id, ticketType.Id, dto.Quantity, true);
+        if (ev != null)
+        {
+            var allowed = await _mediator.Send(new CheckEventAccessQuery(ev.Id, authenticatedUserId));
+            if (!allowed)
+                return BadRequest("This event is restricted to a specific group you're not a member of.");
+        }
+
+        var bookingDto = new CreateBookingDto(registration.Id, ticketType.Id, dto.Quantity, true, dto.PaymentMethod);
 
         // Use mediator to create booking via existing handler
         var response = await _mediator.Send(new CreateBookingCommand(bookingDto));

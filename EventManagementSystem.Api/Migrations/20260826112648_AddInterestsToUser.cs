@@ -5,23 +5,16 @@
 namespace EventManagementSystem.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class AddIdentificationHashToUser : Migration
+    public partial class AddInterestsToUser : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
-                name: "IdentificationNumberHash",
+                name: "Interests",
                 table: "Users",
                 type: "TEXT",
                 maxLength: 500,
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "IdentificationNumberLast4",
-                table: "Users",
-                type: "TEXT",
-                maxLength: 10,
                 nullable: true);
         }
 
@@ -29,11 +22,7 @@ namespace EventManagementSystem.Api.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "IdentificationNumberHash",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "IdentificationNumberLast4",
+                name: "Interests",
                 table: "Users");
         }
     }

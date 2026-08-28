@@ -47,6 +47,18 @@ public class ReviewsController : ControllerBase
         var result = await _mediator.Send(new GetEventReviewSummaryQuery(eventId));
         return Ok(result);
     }
+
+    [HttpGet("pending")]
+    [Authorize]
+    public async Task<ActionResult<List<PendingReviewDto>>> GetPending()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdClaim is null || !int.TryParse(userIdClaim, out var userId))
+            return Unauthorized("Could not identify the logged-in user.");
+
+        var result = await _mediator.Send(new GetPendingReviewsQuery(userId));
+        return Ok(result);
+    }
 }
 
 public record SubmitReviewBody(int Rating, string? Comment);

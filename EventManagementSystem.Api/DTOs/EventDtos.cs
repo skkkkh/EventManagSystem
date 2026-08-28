@@ -83,6 +83,8 @@ public class EventDto
     public string? Description { get; set; }
     public string? Location { get; set; }
     public string? Organizer { get; set; } // Added
+    public int? OrganizerId { get; set; }
+    public int? GroupId { get; set; }
     public string? ImageUrl { get; set; }
     public DateTime StartDateTime { get; set; }
     public DateTime EndDateTime { get; set; }
@@ -94,6 +96,7 @@ public class EventDto
 
     public string Category { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public string? PaymentInstructions { get; set; }
     public int SeatsRemaining { get; set; }
     public string StartDateTimeFormatted => StartDateTime.ToString("f");
     public string EndDateTimeFormatted => EndDateTime.ToString("f");
@@ -106,6 +109,8 @@ public class EventDto
         Description = e.Description,
         Location = e.Location,
         Organizer = e.Organizer, // Added mapping
+        OrganizerId = e.OrganizerId,
+        GroupId = e.GroupId,
         ImageUrl = e.ImageUrl,
         StartDateTime = e.StartDateTime,
         EndDateTime = e.EndDateTime,
@@ -118,6 +123,7 @@ public class EventDto
             .ToList(),
         Category = e.Category.ToString(),
         Price = e.Price,
+        PaymentInstructions = e.PaymentInstructions,
         IsExpired = e.EndDateTime < DateTime.UtcNow
     };
 }

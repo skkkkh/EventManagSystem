@@ -10,7 +10,8 @@ public enum NotificationType
     General = 3,
     EventCancelled = 4,
     EventUpdated = 5,
-    CapacityReached = 6
+    CapacityReached = 6,
+    ReviewPrompt = 7
 }
 
 public class Notification

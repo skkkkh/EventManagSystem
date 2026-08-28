@@ -8,17 +8,21 @@ namespace EventManagementSystem.Api.Services;
 /// Content-based recommendation engine. Scores upcoming events using two
 /// signals: (1) categories the user has attended before, and (2) free-text
 /// interests the user has declared themselves — matched against each
-/// event's category, title, and description.
+/// event's category, title, and description using Gemini for semantic
+/// understanding (e.g. "photography" matching a "camera workshop" event),
+/// falling back to plain keyword overlap if no Gemini API key is configured.
 /// </summary>
 public class RecommendationService : IRecommendationService
 {
     private readonly IUnitOfWork _uow;
     private readonly IReasonEnhancer _reasonEnhancer;
+    private readonly IInterestMatcher _interestMatcher;
 
-    public RecommendationService(IUnitOfWork uow, IReasonEnhancer reasonEnhancer)
+    public RecommendationService(IUnitOfWork uow, IReasonEnhancer reasonEnhancer, IInterestMatcher interestMatcher)
     {
         _uow = uow;
         _reasonEnhancer = reasonEnhancer;
+        _interestMatcher = interestMatcher;
     }
 
     private async Task<int> GetBookedCount(int eventId)
@@ -68,8 +72,20 @@ public class RecommendationService : IRecommendationService
         var registeredEvents = (await _uow.Events.FindAsync(e => registeredEventIds.Contains(e.Id))).ToList();
         var preferredCategories = registeredEvents.Select(e => e.Category).Distinct().ToHashSet();
 
-        // Signal 2: user's own declared interests (free text, e.g. "tech, science, entertainment")
+        // Signal 2: user's own declared interests (free text, e.g. "photography, live music").
+        // Ask Gemini to semantically score every candidate against the interest text in one call.
+        // If no API key is configured (or the call fails), this comes back empty and we fall
+        // back to exact keyword overlap instead — same behaviour as before this change.
         var interestTokens = Tokenize(user.Interests);
+        var aiScores = new Dictionary<int, double>();
+        if (!string.IsNullOrWhiteSpace(user.Interests) && candidates.Count > 0)
+        {
+            var matchCandidates = candidates
+                .Select(c => new InterestMatchCandidate(c.Event.Id, c.Event.Title, c.Event.Category.ToString(), c.Event.Description))
+                .ToList();
+            aiScores = await _interestMatcher.ScoreEventsByInterestAsync(user.Interests, matchCandidates, CancellationToken.None);
+        }
+        bool usedAiMatching = aiScores.Count > 0;
 
         var scored = candidates.Select(c =>
         {
@@ -77,13 +93,22 @@ public class RecommendationService : IRecommendationService
             bool categoryMatch = preferredCategories.Contains(c.Event.Category);
             if (categoryMatch) score += 10;
 
-            var eventText = (c.Event.Category + " " + c.Event.Title + " " + (c.Event.Description ?? string.Empty)).ToLowerInvariant();
-            var eventTokens = Tokenize(eventText);
+            double interestScore; // 0-10 scale either way, for a consistent fallbackReason threshold below
+            if (usedAiMatching && aiScores.TryGetValue(c.Event.Id, out var aiScore))
+            {
+                interestScore = aiScore;
+                score += (int)Math.Round(aiScore * 8); // same weight the old keyword-overlap signal used
+            }
+            else
+            {
+                var eventText = (c.Event.Category + " " + c.Event.Title + " " + (c.Event.Description ?? string.Empty)).ToLowerInvariant();
+                var eventTokens = Tokenize(eventText);
+                int interestOverlap = eventTokens.Intersect(interestTokens).Count();
+                interestScore = interestOverlap; // not on a 0-10 scale, but only used as a >0 check below
+                score += interestOverlap * 8;
+            }
 
-            int interestOverlap = eventTokens.Intersect(interestTokens).Count();
-            score += interestOverlap * 8; // interests are a strong, deliberate signal — weigh heavily
-
-            return (c.Event, c.SeatsRemaining, Score: score, CategoryMatch: categoryMatch, InterestOverlap: interestOverlap);
+            return (c.Event, c.SeatsRemaining, Score: score, CategoryMatch: categoryMatch, InterestMatch: interestScore > (usedAiMatching ? 4.0 : 0));
         })
         .OrderByDescending(x => x.Score)
         .ThenBy(x => x.Event.StartDateTime)
@@ -97,9 +122,9 @@ public class RecommendationService : IRecommendationService
             dto.SeatsRemaining = s.SeatsRemaining;
 
             string fallbackReason;
-            if (s.InterestOverlap > 0 && s.CategoryMatch)
+            if (s.InterestMatch && s.CategoryMatch)
                 fallbackReason = $"Matches your interests and past {s.Event.Category} events";
-            else if (s.InterestOverlap > 0)
+            else if (s.InterestMatch)
                 fallbackReason = "Matches your stated interests";
             else if (s.CategoryMatch)
                 fallbackReason = $"Because you attended {s.Event.Category} events before";

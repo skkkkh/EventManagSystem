@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EventManagementSystem.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260827102724_AddIdentificationHashToUser")]
-    partial class AddIdentificationHashToUser
+    [Migration("20260828161828_AddPaymentInstructionsToEvent")]
+    partial class AddPaymentInstructionsToEvent
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -132,6 +132,10 @@ namespace EventManagementSystem.Api.Migrations
 
                     b.Property<int?>("OrganizerId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("PaymentInstructions")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
                     b.Property<decimal>("Price")
                         .HasColumnType("TEXT");

@@ -259,11 +259,7 @@ public class AppDbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Review>()
-    .HasIndex(r => new { r.EventId, r.UserId })
-    .IsUnique();
+            .HasIndex(r => new { r.EventId, r.UserId })
+            .IsUnique();
     }
 }
-
-
-
-

@@ -46,7 +46,6 @@ public class AuthController : ControllerBase
 
         var role = AllowedSelfRegisterRoles.Contains(dto.Role) ? dto.Role! : "Attendee";
 
-        // Organizers must provide an identification number; other roles may omit it.
         if (role == "Organizer" && string.IsNullOrWhiteSpace(dto.IdentificationNumber))
         {
             return BadRequest("Identification number is required for organiser registration.");
@@ -63,8 +62,6 @@ public class AuthController : ControllerBase
             RegistrationDate = DateTime.UtcNow
         };
 
-        // Hash the ID number (if provided) before the user even exists in the DB —
-        // PasswordHasher<User> only needs the user object as a type marker, not a saved Id.
         if (!string.IsNullOrWhiteSpace(dto.IdentificationNumber))
         {
             user.IdentificationNumberHash = _idHasher.Hash(user, dto.IdentificationNumber);
@@ -102,7 +99,6 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
-    // Lets the logged-in user update their own interests at any time — not just at signup.
     [Authorize]
     [HttpPut("interests")]
     public async Task<ActionResult<AuthResponseDto>> UpdateInterests(UpdateInterestsDto dto)

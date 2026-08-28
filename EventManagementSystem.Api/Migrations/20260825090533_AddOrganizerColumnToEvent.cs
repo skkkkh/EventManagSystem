@@ -5,7 +5,7 @@
 namespace EventManagementSystem.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class AddImageUrlToEvent : Migration
+    public partial class AddOrganizerColumnToEvent : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

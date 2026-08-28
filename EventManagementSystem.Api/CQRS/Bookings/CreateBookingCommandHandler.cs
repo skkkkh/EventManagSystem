@@ -69,7 +69,7 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 {
                     Booking = booking,
                     Amount = booking.TotalAmount,
-                    PaymentMethod = "Card (mock)",
+                    PaymentMethod = dto.PaymentMethod ?? "Card (mock)",
                     Status = PaymentStatus.Completed,
                     TransactionReference = Guid.NewGuid().ToString(),
                     CreatedAt = DateTime.UtcNow

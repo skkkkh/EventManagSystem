@@ -21,7 +21,6 @@ public class User : IdentityUser<int>
 
     public bool BiometricEnabled { get; set; } = false;
 
-    // Navigation
     // Free-text interests the user provides themselves — e.g. "tech, science, entertainment".
     // Used by the recommendation engine alongside past booking history.
     [MaxLength(500)]

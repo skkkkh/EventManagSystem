@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../notificationService';
 
 const colors = {
@@ -9,10 +10,18 @@ const colors = {
   card: '#FFFFFF',
 };
 
+const REVIEW_PROMPT_TYPE = 7;
+const EVENT_MARKER_RE = /^\[\[EVENT:\d+\]\]/;
+
+function displayMessage(message) {
+  return message.replace(EVENT_MARKER_RE, '');
+}
+
 export default function NotificationBell({ currentUser }) {
   const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const navigate = useNavigate();
 
   const userId = currentUser?.userId;
 
@@ -46,6 +55,14 @@ export default function NotificationBell({ currentUser }) {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     } catch {
       // silently ignore — will retry on next poll
+    }
+  };
+
+  const handleNotificationClick = (n) => {
+    handleMarkRead(n.id);
+    if (n.type === REVIEW_PROMPT_TYPE) {
+      setIsOpen(false);
+      navigate('/rate-events');
     }
   };
 
@@ -118,7 +135,7 @@ export default function NotificationBell({ currentUser }) {
           {notifications.map((n) => (
             <div
               key={n.id}
-              onClick={() => handleMarkRead(n.id)}
+              onClick={() => handleNotificationClick(n)}
               style={{
                 padding: '12px 16px',
                 borderBottom: `1px solid ${colors.roseSoft}`,
@@ -127,7 +144,7 @@ export default function NotificationBell({ currentUser }) {
                 color: colors.ink,
               }}
             >
-              <div>{n.message}</div>
+              <div>{n.type === REVIEW_PROMPT_TYPE ? '⭐ ' : ''}{displayMessage(n.message)}</div>
               <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
                 {new Date(n.createdAt).toLocaleString()}
               </div>

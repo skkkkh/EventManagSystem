@@ -34,6 +34,15 @@ public class EventsController : ControllerBase
         return booked;
     }
 
+    // Works whether the caller is logged in or not — authentication middleware
+    // still populates User from a valid Bearer token even on endpoints that
+    // don't require [Authorize], so this just returns null for anonymous callers.
+    private int? GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(userIdClaim, out var id) ? id : null;
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] bool includeExpired = false)
     {
@@ -45,10 +54,14 @@ public class EventsController : ControllerBase
         else
             events = await _unitOfWork.Events.FindAsync(e => e.EndDateTime >= now);
 
+        var userId = GetCurrentUserId();
         var result = new List<EventDto>();
 
         foreach (var ev in events)
         {
+            var allowed = await _mediator.Send(new CheckEventAccessQuery(ev.Id, userId));
+            if (!allowed) continue;
+
             var dto = EventDto.FromEntity(ev);
             dto.SeatsRemaining = Math.Max(0, ev.Capacity - await GetBookedCount(ev.Id));
             result.Add(dto);
@@ -62,6 +75,9 @@ public class EventsController : ControllerBase
     {
         var ev = await _unitOfWork.Events.GetByIdAsync(id);
         if (ev == null) return NotFound();
+
+        var allowed = await _mediator.Send(new CheckEventAccessQuery(id, GetCurrentUserId()));
+        if (!allowed) return NotFound(); // don't reveal that a restricted event exists
 
         var dto = EventDto.FromEntity(ev);
         dto.SeatsRemaining = Math.Max(0, ev.Capacity - await GetBookedCount(ev.Id));
@@ -117,24 +133,27 @@ public class EventsController : ControllerBase
         existing.StartDateTime = ev.StartDateTime;
         existing.EndDateTime = ev.EndDateTime;
         existing.Capacity = ev.Capacity;
+        existing.Price = ev.Price;
+        existing.PaymentInstructions = ev.PaymentInstructions;
         existing.IsPublished = ev.IsPublished;
         existing.Category = ev.Category;
+        existing.GroupId = ev.GroupId;
 
         _unitOfWork.Events.Update(existing);
 
-        // Keep ticket inventory in sync with capacity changes, so raising
-        // capacity actually reopens booking availability, and lowering it
-        // reduces remaining seats accordingly.
+        // Keep ticket inventory and price in sync with capacity/price changes,
+        // so raising capacity actually reopens booking availability, lowering
+        // it reduces remaining seats accordingly, and editing the price
+        // actually changes what attendees get charged (not just what's shown).
         var capacityDelta = ev.Capacity - oldCapacity;
-        if (capacityDelta != 0)
+        var ticketTypes = await _unitOfWork.TicketTypes.FindAsync(t => t.EventId == id);
+        var primaryTicket = ticketTypes.FirstOrDefault();
+        if (primaryTicket != null)
         {
-            var ticketTypes = await _unitOfWork.TicketTypes.FindAsync(t => t.EventId == id);
-            var primaryTicket = ticketTypes.FirstOrDefault();
-            if (primaryTicket != null)
-            {
+            if (capacityDelta != 0)
                 primaryTicket.Quantity = Math.Max(0, primaryTicket.Quantity + capacityDelta);
-                _unitOfWork.TicketTypes.Update(primaryTicket);
-            }
+            primaryTicket.Price = ev.Price;
+            _unitOfWork.TicketTypes.Update(primaryTicket);
         }
 
         await _unitOfWork.CompleteAsync();

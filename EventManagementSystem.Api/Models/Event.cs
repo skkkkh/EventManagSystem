@@ -34,10 +34,15 @@ public class Event
 
     public EventCategory Category { get; set; } = EventCategory.Other;
 
-
     // If set, only members of this group can see the event. Null = public event.
     public int? GroupId { get; set; }
     public Group? Group { get; set; }
+
+    // Free text the organiser writes explaining how attendees should actually
+    // pay — e.g. a JazzCash/EasyPaisa number, bank account details, or where
+    // to hand over cash. Shown to attendees when they reserve a paid event.
+    [MaxLength(500)]
+    public string? PaymentInstructions { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
