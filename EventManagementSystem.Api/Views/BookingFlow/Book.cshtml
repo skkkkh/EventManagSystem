@@ -1,0 +1,67 @@
+﻿@model EventManagementSystem.Api.ViewModels.BookEventViewModel
+
+@{
+    ViewData["Title"] = "Book Tickets";
+}
+
+<h1>@Model.Event.Title</h1>
+<p style="color:#666;">
+    @Model.Event.Location &middot; @Model.Event.StartDateTime.ToLocalTime().ToString("g")
+</p>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="card" style="border-left:4px solid #c0392b;">
+        <ul>
+            @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+            {
+                <li>@error.ErrorMessage</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="card">
+    <h2>Select tickets</h2>
+
+    @if (!Model.TicketTypes.Any())
+    {
+        <p>No ticket types have been set up for this event yet.</p>
+    }
+    else
+    {
+        <form asp-action="Book" method="post">
+            <input type="hidden" asp-for="Form.EventId" />
+
+            <div>
+                <label>Full name</label>
+                <input asp-for="Form.FullName" />
+            </div>
+            <div>
+                <label>Email</label>
+                <input asp-for="Form.Email" />
+            </div>
+            <div>
+                <label>Phone (optional)</label>
+                <input asp-for="Form.Phone" />
+            </div>
+            <div>
+                <label>Ticket type</label>
+                <select asp-for="Form.TicketTypeId">
+                    <option value="">-- select --</option>
+                    @foreach (var t in Model.TicketTypes)
+                    {
+                        <option value="@t.Id">@t.Name — @t.Price.ToString("C") (@t.Quantity left)</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label>Quantity</label>
+                <input asp-for="Form.Quantity" type="number" min="1" />
+            </div>
+            <div>
+                <button type="submit">Continue to checkout</button>
+            </div>
+        </form>
+    }
+</div>

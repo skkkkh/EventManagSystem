@@ -1,16 +1,27 @@
 # event_management_app
 
-A new Flutter project.
+Flutter mobile application for the Event Management System.
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+This project is a Flutter application.
 
-A few resources to get you started if this is your first Flutter project:
+To install dependencies:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+`ash
+flutter pub get
+flutter run
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+
+### 3. Ab conflicts resolve karo
+
+`powershell
+git add .gitignore README.md
+
+
+
+
+
+
+

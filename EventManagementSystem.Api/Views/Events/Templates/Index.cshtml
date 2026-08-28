@@ -1,0 +1,23 @@
+@model IEnumerable<EventManagementSystem.Api.DTOs.EventTemplateDto>
+
+@{
+    ViewData["Title"] = "Event Templates";
+}
+
+<h1>Event Templates</h1>
+
+<p><a asp-action="CreateTemplate">Create new template</a> | <a asp-action="Index" controller="EventsAdmin">Back to Events</a></p>
+
+@foreach (var t in Model)
+{
+    <div class="card">
+        <h3>@t.Name</h3>
+        <p>@t.Description</p>
+        <ul>
+            @foreach (var f in t.CustomFields)
+            {
+                <li>@f.Name (@f.FieldType)</li>
+            }
+        </ul>
+    </div>
+}

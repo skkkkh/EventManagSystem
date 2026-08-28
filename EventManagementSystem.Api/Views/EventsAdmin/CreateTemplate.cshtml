@@ -1,0 +1,56 @@
+@model EventManagementSystem.Api.DTOs.CreateEventTemplateDto
+
+@{
+    ViewData["Title"] = "Create Event Template";
+}
+
+<h1>Create Event Template</h1>
+
+<form asp-action="CreateTemplate" method="post">
+    <div>
+        <label>Name</label>
+        <input asp-for="Name" />
+    </div>
+    <div>
+        <label>Description</label>
+        <textarea asp-for="Description"></textarea>
+    </div>
+
+    <h3>Custom Fields</h3>
+    <div id="fields">
+        <!-- dynamic rows will be added here -->
+    </div>
+    <p>
+        <button type="button" id="addField">Add Field</button>
+    </p>
+
+    <div>
+        <button type="submit">Create Template</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        let idx = 0;
+        document.getElementById('addField').addEventListener('click', function () {
+            const container = document.getElementById('fields');
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <input name="CustomFields[${idx}].Name" placeholder="Field name" />
+                <select name="CustomFields[${idx}].FieldType">
+                    <option value="0">Text</option>
+                    <option value="1">Number</option>
+                    <option value="2">Date</option>
+                    <option value="3">Bool</option>
+                    <option value="4">Dropdown</option>
+                </select>
+                <label>Required <input type="checkbox" name="CustomFields[${idx}].IsRequired" /></label>
+                <input name="CustomFields[${idx}].Options" placeholder="Options (comma-separated)" />
+                <button type="button" class="remove">Remove</button>
+            `;
+            container.appendChild(div);
+            div.querySelector('.remove').addEventListener('click', function () { div.remove(); });
+            idx++;
+        });
+    </script>
+}
