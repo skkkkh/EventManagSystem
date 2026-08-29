@@ -63,15 +63,21 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
             await _uow.Bookings.AddAsync(booking);
             await _uow.SaveChangesAsync();
 
-            if (dto.IsPaid)
+            // Record a Payment row whenever a method was declared, even if
+            // it's not confirmed yet — this is what lets the organiser see
+            // "how they said they'd pay" in the pending-payments list, and
+            // what confirm-payment later flips to Completed. A free event
+            // with no declared method (IsPaid but no PaymentMethod) doesn't
+            // need one at all since there's nothing to collect.
+            if (dto.IsPaid || !string.IsNullOrWhiteSpace(dto.PaymentMethod))
             {
                 var payment = new Payment
                 {
                     Booking = booking,
                     Amount = booking.TotalAmount,
                     PaymentMethod = dto.PaymentMethod ?? "Card (mock)",
-                    Status = PaymentStatus.Completed,
-                    TransactionReference = Guid.NewGuid().ToString(),
+                    Status = dto.IsPaid ? PaymentStatus.Completed : PaymentStatus.Pending,
+                    TransactionReference = dto.IsPaid ? Guid.NewGuid().ToString() : null,
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -79,22 +85,25 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 await _uow.SaveChangesAsync();
             }
 
-            // Email confirmation to the registrant
+            // Email + in-app notification to the registrant
             await _mediator.Publish(new BookingConfirmedEvent
             {
                 BookingId = booking.Id,
                 RegistrationEmail = registration.Email,
                 RegistrationName = registration.FullName,
-                EventTitle = ev?.Title ?? "the event"
+                EventTitle = ev?.Title ?? "the event",
+                UserId = registration.UserId,
+                IsPaid = dto.IsPaid
             }, cancellationToken);
 
-            // Email confirmation to the organizer, keeping them updated on registration activity
+            // Email + in-app notification to the organizer, keeping them updated on registration activity
             await _mediator.Publish(new OrganizerBookingUpdateEvent
             {
                 OrganizerId = ev?.OrganizerId,
                 EventTitle = ev?.Title ?? "the event",
                 RegistrantName = registration.FullName,
-                Quantity = dto.Quantity
+                Quantity = dto.Quantity,
+                IsPaid = dto.IsPaid
             }, cancellationToken);
 
             // In-app alert to organizer if capacity is now full

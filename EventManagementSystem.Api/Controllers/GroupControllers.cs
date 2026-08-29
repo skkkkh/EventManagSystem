@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using EventManagementSystem.Api.CQRS.Groups;
 using EventManagementSystem.Api.DTOs;
 using MediatR;
@@ -72,5 +72,53 @@ public class GroupsController : ControllerBase
     {
         var result = await _mediator.Send(new GetGroupMembersQuery(groupId));
         return Ok(result);
+    }
+
+    [HttpPut("{groupId:int}")]
+    public async Task<ActionResult<GroupDto>> UpdateGroup(int groupId, UpdateGroupDto dto)
+    {
+        var organiserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (organiserIdClaim is null || !int.TryParse(organiserIdClaim, out var organiserId))
+        {
+            return Unauthorized("Could not identify the logged-in organiser.");
+        }
+
+        try
+        {
+            var result = await _mediator.Send(new UpdateGroupCommand(groupId, dto, organiserId));
+            return Ok(result);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpDelete("{groupId:int}")]
+    public async Task<IActionResult> DeleteGroup(int groupId)
+    {
+        var organiserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (organiserIdClaim is null || !int.TryParse(organiserIdClaim, out var organiserId))
+        {
+            return Unauthorized("Could not identify the logged-in organiser.");
+        }
+
+        try
+        {
+            await _mediator.Send(new DeleteGroupCommand(groupId, organiserId));
+            return NoContent();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 }

@@ -81,6 +81,17 @@ public record PaymentResponseDto(
     DateTime CreatedAt
 );
 
+public record PendingPaymentDto(
+    int BookingId,
+    string EventTitle,
+    string AttendeeName,
+    string AttendeeEmail,
+    int Quantity,
+    decimal TotalAmount,
+    string? DeclaredPaymentMethod,
+    DateTime BookedAt
+);
+
 public record MyBookingDto(
     int BookingId,
     string EventTitle,

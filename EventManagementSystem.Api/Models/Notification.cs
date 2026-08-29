@@ -11,7 +11,9 @@ public enum NotificationType
     EventCancelled = 4,
     EventUpdated = 5,
     CapacityReached = 6,
-    ReviewPrompt = 7
+    ReviewPrompt = 7,
+    PaymentConfirmed = 8,
+    PaymentPending = 9
 }
 
 public class Notification

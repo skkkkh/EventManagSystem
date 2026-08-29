@@ -51,6 +51,7 @@ public class PaymentsController : ControllerBase
         };
 
         booking.Status = BookingStatus.Confirmed;
+        booking.IsPaid = true;
 
         _context.Payments.Add(payment);
 

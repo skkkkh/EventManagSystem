@@ -1,5 +1,6 @@
 using EventManagementSystem.Api.CQRS.Bookings;
 using EventManagementSystem.Api.CQRS.Groups;
+using EventManagementSystem.Api.CQRS.Notifications;
 using EventManagementSystem.Api.Data;
 using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
@@ -202,12 +203,126 @@ public class BookingsController : ControllerBase
                 return BadRequest("This event is restricted to a specific group you're not a member of.");
         }
 
-        var bookingDto = new CreateBookingDto(registration.Id, ticketType.Id, dto.Quantity, true, dto.PaymentMethod);
+        // Only truly-free events get auto-confirmed on click. A paid event
+        // requires the organiser to actually confirm the payment was
+        // received before the seat is finalised (see ConfirmPayment below) —
+        // typing something into the payment-method box is just the attendee
+        // declaring how they intend to pay, not an actual payment.
+        var isFreeEvent = ev == null || ev.Price <= 0;
+        if (!isFreeEvent && string.IsNullOrWhiteSpace(dto.PaymentMethod))
+            return BadRequest("Please specify how you'll pay before reserving a spot on a paid event.");
+
+        var bookingDto = new CreateBookingDto(registration.Id, ticketType.Id, dto.Quantity, isFreeEvent, dto.PaymentMethod);
 
         // Use mediator to create booking via existing handler
         var response = await _mediator.Send(new CreateBookingCommand(bookingDto));
 
         return CreatedAtAction(nameof(GetBooking), new { id = response.Id }, response);
+    }
+
+    // Bookings awaiting the organiser's payment confirmation. Admins see
+    // every organiser's pending bookings; organisers see only their own
+    // events'.
+    [HttpGet("pending-payments")]
+    [Authorize(Roles = "Admin,Organizer")]
+    public async Task<ActionResult<List<PendingPaymentDto>>> GetPendingPayments()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int.TryParse(userIdClaim, out var userId);
+        var isAdmin = User.IsInRole("Admin");
+
+        var query = _context.Bookings
+            .AsNoTracking()
+            .Include(b => b.Registration)
+            .Include(b => b.TicketType).ThenInclude(t => t!.Event)
+            .Include(b => b.Payment)
+            .Where(b => !b.IsPaid && b.Status != BookingStatus.Cancelled &&
+                        b.TicketType != null && b.TicketType.Event != null);
+
+        if (!isAdmin)
+            query = query.Where(b => b.TicketType!.Event!.OrganizerId == userId);
+
+        var pending = await query
+            .OrderByDescending(b => b.BookedAt)
+            .Select(b => new PendingPaymentDto(
+                b.Id,
+                b.TicketType!.Event!.Title,
+                b.Registration != null ? b.Registration.FullName : "Unknown",
+                b.Registration != null ? b.Registration.Email : "",
+                b.Quantity,
+                b.TotalAmount,
+                b.Payment != null ? b.Payment.PaymentMethod : null,
+                b.BookedAt
+            ))
+            .ToListAsync();
+
+        return Ok(pending);
+    }
+
+    // The organiser (or an admin) confirms an attendee's payment was
+    // actually received. Only now does the booking count as paid/confirmed.
+    [HttpPut("{id:int}/confirm-payment")]
+    [Authorize(Roles = "Admin,Organizer")]
+    public async Task<IActionResult> ConfirmPayment(int id)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int.TryParse(userIdClaim, out var userId);
+        var isAdmin = User.IsInRole("Admin");
+
+        var booking = await _context.Bookings
+            .Include(b => b.Registration)
+            .Include(b => b.TicketType).ThenInclude(t => t!.Event)
+            .Include(b => b.Payment)
+            .FirstOrDefaultAsync(b => b.Id == id);
+
+        if (booking == null) return NotFound();
+        if (booking.TicketType?.Event == null) return NotFound("Event for this booking could not be found.");
+
+        if (!isAdmin && booking.TicketType.Event.OrganizerId != userId)
+            return Forbid();
+
+        if (booking.Status == BookingStatus.Cancelled)
+            return BadRequest("This booking has been cancelled.");
+
+        if (booking.IsPaid)
+            return Ok(new { message = "This booking is already confirmed." });
+
+        booking.IsPaid = true;
+        booking.Status = BookingStatus.Confirmed;
+
+        if (booking.Payment != null)
+        {
+            booking.Payment.Status = PaymentStatus.Completed;
+            booking.Payment.TransactionReference ??= $"TXN-{Guid.NewGuid():N}".ToUpper();
+        }
+        else
+        {
+            _context.Payments.Add(new Payment
+            {
+                BookingId = booking.Id,
+                Amount = booking.TotalAmount,
+                PaymentMethod = "Confirmed by organiser",
+                Status = PaymentStatus.Completed,
+                TransactionReference = $"TXN-{Guid.NewGuid():N}".ToUpper(),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        if (booking.Registration != null)
+        {
+            await _mediator.Publish(new PaymentConfirmedEvent
+            {
+                BookingId = booking.Id,
+                RegistrationEmail = booking.Registration.Email,
+                RegistrationName = booking.Registration.FullName,
+                EventTitle = booking.TicketType.Event.Title,
+                UserId = booking.Registration.UserId
+            });
+        }
+
+        return Ok(new { message = "Payment confirmed. The booking is now confirmed." });
     }
 
     [HttpPut("{id:int}/cancel")]

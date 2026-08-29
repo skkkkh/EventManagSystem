@@ -381,6 +381,8 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
     const event = reserveModalEvent;
     const eventId = event.id || event.eventId;
     const title = event.title || event.name;
+    const price = event.price ?? event.Price;
+    const isFree = !price || price <= 0;
 
     setBooking(true);
     try {
@@ -393,12 +395,16 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
         cardNumber: '',
         cardName: '',
         cardExpiry: '',
-        paymentMethod,
+        paymentMethod: isFree ? null : paymentMethod,
       });
 
       await refreshAll();
       setReserveModalEvent(null);
-      alert(`Successfully reserved spot for: ${title} (Payment: ${paymentMethod})`);
+      if (isFree) {
+        alert(`Successfully reserved spot for: ${title}`);
+      } else {
+        alert(`Reservation submitted for: ${title}. Your seat will be confirmed once the organiser verifies your payment — check My Bookings for status.`);
+      }
     } catch (err) {
       const msg = err.response?.data || 'Failed to reserve spot. Please try again.';
       alert(typeof msg === 'string' ? msg : 'Failed to reserve spot. Please try again.');
@@ -417,6 +423,7 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
             {currentUser ? (
               <>
                 <Link to="/my-bookings" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>My Bookings</Link>
+                <Link to="/my-past-events" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>Past Events</Link>
                 <Link to="/rate-events" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>Rate Events</Link>
                 <NotificationBell currentUser={currentUser} />
                 <span style={{ fontSize: '13px', color: colors.muted }}>Hi, <strong>{currentUser.name}</strong></span>
@@ -545,7 +552,11 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
         )}
       </div>
 
-      {reserveModalEvent && (
+      {reserveModalEvent && (() => {
+        const modalPrice = reserveModalEvent.price ?? reserveModalEvent.Price;
+        const modalIsFree = !modalPrice || modalPrice <= 0;
+        const canConfirm = modalIsFree || paymentMethod.trim();
+        return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(45,35,38,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
           <div style={{ background: colors.card, borderRadius: '18px', padding: '30px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 4px 0', fontFamily: fontDisplay, color: colors.wine, fontSize: '22px' }}>Confirm Reservation</h3>
@@ -553,23 +564,36 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
               {reserveModalEvent.title || reserveModalEvent.name}
             </p>
 
-            {(reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions) && (
+            {modalIsFree ? (
               <div style={{ background: colors.roseSoft, borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
-                <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: colors.wine, letterSpacing: '0.3px' }}>HOW TO PAY THE ORGANISER</p>
-                <p style={{ margin: 0, fontSize: '13px', color: colors.ink, whiteSpace: 'pre-wrap' }}>
-                  {reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions}
+                <p style={{ margin: 0, fontSize: '13px', color: colors.ink }}>
+                  🎉 This event is free — no payment needed. Click Confirm to reserve your spot.
                 </p>
               </div>
-            )}
+            ) : (
+              <>
+                {(reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions) && (
+                  <div style={{ background: colors.roseSoft, borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+                    <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: colors.wine, letterSpacing: '0.3px' }}>HOW TO PAY THE ORGANISER</p>
+                    <p style={{ margin: 0, fontSize: '13px', color: colors.ink, whiteSpace: 'pre-wrap' }}>
+                      {reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions}
+                    </p>
+                  </div>
+                )}
 
-            <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600, color: colors.ink }}>How would you like to pay?</p>
-            <input
-              type="text"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              placeholder="e.g. Bank Card, EasyPaisa, JazzCash, Cash on Delivery..."
-              style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', border: `1.5px solid ${colors.roseSoft}`, outline: 'none', fontSize: '14px', color: colors.ink, marginBottom: '24px' }}
-            />
+                <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600, color: colors.ink }}>How will you pay?</p>
+                <input
+                  type="text"
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  placeholder="e.g. Bank Card, EasyPaisa, JazzCash, Cash on Delivery..."
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', border: `1.5px solid ${colors.roseSoft}`, outline: 'none', fontSize: '14px', color: colors.ink, marginBottom: '10px' }}
+                />
+                <p style={{ margin: '0 0 24px 0', fontSize: '12px', color: colors.muted }}>
+                  This just tells the organiser how you'll pay — your seat is confirmed once they verify the payment was actually received.
+                </p>
+              </>
+            )}
 
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
@@ -581,15 +605,16 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
               </button>
               <button
                 onClick={confirmReservation}
-                disabled={booking || !paymentMethod.trim()}
-                style={{ flex: 1, background: colors.wine, color: '#fff', border: 'none', padding: '12px', borderRadius: '10px', cursor: (booking || !paymentMethod.trim()) ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: (booking || !paymentMethod.trim()) ? 0.6 : 1 }}
+                disabled={booking || !canConfirm}
+                style={{ flex: 1, background: colors.wine, color: '#fff', border: 'none', padding: '12px', borderRadius: '10px', cursor: (booking || !canConfirm) ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: (booking || !canConfirm) ? 0.6 : 1 }}
               >
                 {booking ? 'Confirming...' : 'Confirm'}
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -763,14 +788,14 @@ function CreateEventView() {
 function AdminPanel({ currentUser, setCurrentUser }) {
   const [events, setEvents] = useState([]);
   const [pastOrganizedEvents, setPastOrganizedEvents] = useState([]);
-  const [attendedPastBookings, setAttendedPastBookings] = useState([]);
+  const [pendingPayments, setPendingPayments] = useState([]);
+  const [confirmingId, setConfirmingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [editingEvent, setEditingEvent] = useState(null);
-  const [panelTab, setPanelTab] = useState('upcoming'); // 'upcoming' | 'past' | 'groups'
-  const [pastSubTab, setPastSubTab] = useState('attended'); // 'attended' | 'organized'
+  const [panelTab, setPanelTab] = useState('upcoming'); // 'upcoming' | 'past' | 'payments' | 'groups'
   const [editGroups, setEditGroups] = useState([]);
   const navigate = useNavigate();
 
@@ -795,12 +820,9 @@ function AdminPanel({ currentUser, setCurrentUser }) {
       .catch(() => {});
   };
 
-  const fetchAttendedPastBookings = () => {
-    bookingService.getMine()
-      .then((data) => {
-        const now = new Date();
-        setAttendedPastBookings(data.filter((b) => new Date(b.eventEndDateTime) < now));
-      })
+  const fetchPendingPayments = () => {
+    bookingService.getPendingPayments()
+      .then(setPendingPayments)
       .catch(() => {});
   };
 
@@ -808,9 +830,22 @@ function AdminPanel({ currentUser, setCurrentUser }) {
     if (currentUser) {
       fetchEvents();
       fetchPastOrganizedEvents();
-      fetchAttendedPastBookings();
+      fetchPendingPayments();
     }
   }, [currentUser]);
+
+  const handleConfirmPayment = async (bookingId) => {
+    setConfirmingId(bookingId);
+    try {
+      await bookingService.confirmPayment(bookingId);
+      fetchPendingPayments();
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data || 'Failed to confirm payment.';
+      alert(typeof msg === 'string' ? msg : 'Failed to confirm payment.');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
@@ -1048,6 +1083,7 @@ function AdminPanel({ currentUser, setCurrentUser }) {
             {[
               { key: 'upcoming', label: 'Upcoming Events' },
               { key: 'past', label: 'Past Events' },
+              { key: 'payments', label: `Pending Payments${pendingPayments.length ? ` (${pendingPayments.length})` : ''}` },
               { key: 'groups', label: 'Groups' },
             ].map((t) => (
               <button
@@ -1083,56 +1119,40 @@ function AdminPanel({ currentUser, setCurrentUser }) {
 
           {panelTab === 'past' && (
             <>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-                {[
-                  { key: 'attended', label: 'Attended by User' },
-                  { key: 'organized', label: 'Overall Past Events' },
-                ].map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => setPastSubTab(t.key)}
-                    style={{
-                      padding: '7px 14px',
-                      borderRadius: '20px',
-                      border: `1.5px solid ${pastSubTab === t.key ? colors.wine : colors.roseSoft}`,
-                      background: pastSubTab === t.key ? colors.wine : '#fff',
-                      color: pastSubTab === t.key ? '#fff' : colors.ink,
-                      fontWeight: 600,
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {t.label}
-                  </button>
+              {pastOrganizedEvents.length === 0 && <EmptyPanelState text="No past events you've organized yet." />}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {pastOrganizedEvents.map((event) => (
+                  <ManagedEventRow key={event.id || event.eventId} event={event} groups={editGroups} onEdit={handleStartEditing} onDelete={handleDelete} />
                 ))}
               </div>
+            </>
+          )}
 
-              {pastSubTab === 'attended' && (
-                <>
-                  {attendedPastBookings.length === 0 && <EmptyPanelState text="No past events you've attended yet." />}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                    {attendedPastBookings.map((b) => (
-                      <div key={b.bookingId} style={{ padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
-                        <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{b.eventTitle}</h4>
-                        <p style={{ margin: 0, fontSize: '13px', color: colors.muted }}>
-                          {new Date(b.eventStartDateTime).toLocaleDateString()} · {b.status} · {b.isPaid ? `Paid (${b.paymentMethod || 'method not recorded'})` : 'Not paid'}
-                        </p>
-                      </div>
-                    ))}
+          {panelTab === 'payments' && (
+            <>
+              {pendingPayments.length === 0 && <EmptyPanelState text="No bookings are waiting on payment confirmation." />}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {pendingPayments.map((p) => (
+                  <div key={p.bookingId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{p.eventTitle}</h4>
+                      <p style={{ margin: '0 0 2px 0', fontSize: '13px', color: colors.muted }}>
+                        {p.attendeeName} ({p.attendeeEmail}) · Qty: {p.quantity} · Rs. {Number(p.totalAmount).toLocaleString()}
+                      </p>
+                      <p style={{ margin: 0, fontSize: '13px', color: colors.ink, fontWeight: 600 }}>
+                        Declared payment method: {p.declaredPaymentMethod || 'not recorded'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleConfirmPayment(p.bookingId)}
+                      disabled={confirmingId === p.bookingId}
+                      style={{ background: colors.wine, color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: confirmingId === p.bookingId ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '13px', opacity: confirmingId === p.bookingId ? 0.6 : 1 }}
+                    >
+                      {confirmingId === p.bookingId ? 'Confirming...' : 'Confirm Payment Received'}
+                    </button>
                   </div>
-                </>
-              )}
-
-              {pastSubTab === 'organized' && (
-                <>
-                  {pastOrganizedEvents.length === 0 && <EmptyPanelState text="No past events you've organized yet." />}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                    {pastOrganizedEvents.map((event) => (
-                      <ManagedEventRow key={event.id || event.eventId} event={event} groups={editGroups} onEdit={handleStartEditing} onDelete={handleDelete} />
-                    ))}
-                  </div>
-                </>
-              )}
+                ))}
+              </div>
             </>
           )}
 
@@ -1185,6 +1205,10 @@ function GroupsPanel() {
   const [newGroupName, setNewGroupName] = useState('');
   const [creating, setCreating] = useState(false);
   const [openGroupId, setOpenGroupId] = useState(null);
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingGroupId, setDeletingGroupId] = useState(null);
 
   const fetchGroups = () => {
     groupService.getMyGroups()
@@ -1207,6 +1231,47 @@ function GroupsPanel() {
       alert(typeof msg === 'string' ? msg : 'Failed to create group.');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const startEditing = (g) => {
+    setEditingGroupId(g.id);
+    setEditName(g.name);
+    setOpenGroupId(null);
+  };
+
+  const cancelEditing = () => {
+    setEditingGroupId(null);
+    setEditName('');
+  };
+
+  const handleSaveEdit = async (groupId) => {
+    if (!editName.trim()) return;
+    setSavingEdit(true);
+    try {
+      await groupService.updateGroup(groupId, editName.trim());
+      setEditingGroupId(null);
+      setEditName('');
+      fetchGroups();
+    } catch (err) {
+      const msg = err.response?.data || 'Failed to rename group.';
+      alert(typeof msg === 'string' ? msg : 'Failed to rename group.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteGroup = async (g) => {
+    if (!window.confirm(`Delete the group "${g.name}"? Any events restricted to it will become public again.`)) return;
+    setDeletingGroupId(g.id);
+    try {
+      await groupService.deleteGroup(g.id);
+      fetchGroups();
+    } catch (err) {
+      const msg = err.response?.data || 'Failed to delete group.';
+      alert(typeof msg === 'string' ? msg : 'Failed to delete group.');
+    } finally {
+      setDeletingGroupId(null);
     }
   };
 
@@ -1237,18 +1302,59 @@ function GroupsPanel() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {groups.map((g) => (
           <div key={g.id} style={{ padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div>
-                <h4 style={{ margin: '0 0 2px 0', fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{g.name}</h4>
-                <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>{g.memberCount} member{g.memberCount === 1 ? '' : 's'}</p>
+            {editingGroupId === g.id ? (
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  autoFocus
+                  style={{ flex: 1, minWidth: '180px', padding: '8px 12px', borderRadius: '8px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontSize: '14px' }}
+                />
+                <button
+                  onClick={() => handleSaveEdit(g.id)}
+                  disabled={savingEdit || !editName.trim()}
+                  style={{ background: colors.wine, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: (savingEdit || !editName.trim()) ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: (savingEdit || !editName.trim()) ? 0.6 : 1 }}
+                >
+                  {savingEdit ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={cancelEditing}
+                  disabled={savingEdit}
+                  style={{ background: '#E5E7EB', color: colors.ink, border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
               </div>
-              <button
-                onClick={() => setOpenGroupId(openGroupId === g.id ? null : g.id)}
-                style={{ background: colors.teal, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
-              >
-                {openGroupId === g.id ? 'Close' : '+ Add Members'}
-              </button>
-            </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 2px 0', fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{g.name}</h4>
+                  <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>{g.memberCount} member{g.memberCount === 1 ? '' : 's'}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setOpenGroupId(openGroupId === g.id ? null : g.id)}
+                    style={{ background: colors.teal, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                  >
+                    {openGroupId === g.id ? 'Close' : '+ Add Members'}
+                  </button>
+                  <button
+                    onClick={() => startEditing(g)}
+                    style={{ background: '#fff', color: colors.ink, border: `1px solid ${colors.roseSoft}`, padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteGroup(g)}
+                    disabled={deletingGroupId === g.id}
+                    style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: deletingGroupId === g.id ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: deletingGroupId === g.id ? 0.6 : 1 }}
+                  >
+                    {deletingGroupId === g.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {openGroupId === g.id && (
               <AddMembersPanel groupId={g.id} onMemberAdded={fetchGroups} />
@@ -1598,6 +1704,120 @@ function RateEventsView({ currentUser }) {
   );
 }
 
+function PastEventCard({ event, statusLabel, statusTone }) {
+  const title = event.title || event.name;
+  const rawDate = event.startDateTime || event.StartDateTime || event.date;
+  const dateStr = rawDate ? new Date(rawDate).toLocaleDateString() : 'TBA';
+  const organizer = event.organizer || event.Organizer || 'General Host';
+  return (
+    <div style={{ background: colors.card, borderRadius: '14px', padding: '18px 22px', border: `1px solid ${colors.roseSoft}`, marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+      <div>
+        <h4 style={{ margin: '0 0 4px 0', fontFamily: fontDisplay, color: colors.ink, fontSize: '16px' }}>{title}</h4>
+        <p style={{ margin: 0, color: colors.muted, fontSize: '13px' }}>{organizer} · {dateStr}</p>
+      </div>
+      <span style={{ background: statusTone.bg, color: statusTone.fg, padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+        {statusLabel}
+      </span>
+    </div>
+  );
+}
+
+function PastEventsView({ currentUser }) {
+  const [attended, setAttended] = useState([]);
+  const [notAttended, setNotAttended] = useState([]);
+  const [subTab, setSubTab] = useState('attended'); // 'attended' | 'not-attended'
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+
+    Promise.all([bookingService.getMine(), eventService.getAllEvents(true)])
+      .then(([bookings, pastEvents]) => {
+        const now = new Date();
+        const pastBookings = bookings.filter((b) => new Date(b.eventEndDateTime) < now && b.status !== 'Cancelled');
+        const attendedTitles = new Set(pastBookings.map((b) => b.eventTitle));
+
+        setAttended(pastBookings);
+        setNotAttended(pastEvents.filter((e) => !attendedTitles.has(e.title || e.name)));
+        setLoading(false);
+      })
+      .catch(() => { setError('Failed to load your past events.'); setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  return (
+    <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', padding: '40px 24px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h2 style={{ fontFamily: fontDisplay, color: colors.wine, margin: 0, fontSize: '28px' }}>Past Events</h2>
+          <Link to="/events" style={{ color: colors.muted, textDecoration: 'none', fontSize: '14px', fontWeight: 600 }}>← Back</Link>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          {[
+            { key: 'attended', label: `Attended (${attended.length})` },
+            { key: 'not-attended', label: `Not Attended (${notAttended.length})` },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setSubTab(t.key)}
+              style={{
+                padding: '9px 16px',
+                borderRadius: '20px',
+                border: `1.5px solid ${subTab === t.key ? colors.wine : colors.roseSoft}`,
+                background: subTab === t.key ? colors.wine : '#fff',
+                color: subTab === t.key ? '#fff' : colors.ink,
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {loading && <p style={{ color: colors.muted }}>Loading...</p>}
+        {error && <p style={{ color: '#b3261e' }}>{error}</p>}
+
+        {!loading && !error && subTab === 'attended' && (
+          <>
+            {attended.length === 0 && <EmptyPanelState text="You haven't attended any past events yet." />}
+            {attended.map((b) => (
+              <PastEventCard
+                key={b.bookingId}
+                event={{ title: b.eventTitle, startDateTime: b.eventStartDateTime }}
+                statusLabel={b.isPaid ? 'Attended' : 'Booked (payment pending)'}
+                statusTone={b.isPaid ? { bg: '#DCFCE7', fg: '#166534' } : { bg: '#FEF3C7', fg: '#92400E' }}
+              />
+            ))}
+          </>
+        )}
+
+        {!loading && !error && subTab === 'not-attended' && (
+          <>
+            {notAttended.length === 0 && <EmptyPanelState text="No other past events found." />}
+            {notAttended.map((event) => (
+              <PastEventCard
+                key={event.id || event.eventId}
+                event={event}
+                statusLabel="Not Attended"
+                statusTone={{ bg: '#F3EDEF', fg: colors.muted }}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
 
@@ -1612,6 +1832,7 @@ export default function App() {
         <Route path="/create-event" element={<CreateEventView />} />
         <Route path="/rate-events" element={<RateEventsView currentUser={currentUser} />} />
         <Route path="/my-bookings" element={<MyBookingsView currentUser={currentUser} />} />
+        <Route path="/my-past-events" element={<PastEventsView currentUser={currentUser} />} />
       </Routes>
     </Router>
   );

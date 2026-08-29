@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using EventManagementSystem.Api.Models;
 
 namespace EventManagementSystem.Api.DTOs;
@@ -24,6 +24,12 @@ public record GroupDto(
         group.CreatedAt,
         group.Members.Count
     );
+}
+
+public class UpdateGroupDto
+{
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
 }
 
 public class AddGroupMemberDto

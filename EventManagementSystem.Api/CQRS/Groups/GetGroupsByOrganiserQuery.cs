@@ -19,6 +19,16 @@ public class GetGroupsByOrganiserQueryHandler : IRequestHandler<GetGroupsByOrgan
     public async Task<List<GroupDto>> Handle(GetGroupsByOrganiserQuery request, CancellationToken cancellationToken)
     {
         var groups = await _uow.Repository<Group>().FindAsync(g => g.OrganiserId == request.OrganiserId);
-        return groups.Select(GroupDto.FromEntity).ToList();
+
+        // The generic repository doesn't eager-load navigation properties,
+        // so group.Members would always come back empty here — count each
+        // group's members with a separate query instead of trusting it.
+        var result = new List<GroupDto>();
+        foreach (var group in groups)
+        {
+            var members = await _uow.Repository<GroupMember>().FindAsync(gm => gm.GroupId == group.Id);
+            result.Add(new GroupDto(group.Id, group.Name, group.OrganiserId, group.CreatedAt, members.Count));
+        }
+        return result;
     }
 }
