@@ -852,6 +852,12 @@ function AdminPanel({ currentUser, setCurrentUser }) {
     setLoginError('');
     try {
       const user = await authService.login(email, password);
+      const roles = user.roles || [];
+      if (!roles.includes('Admin') && !roles.includes('Organizer')) {
+        authService.logout();
+        setLoginError('Access Denied. Invalid credentials or insufficient permissions.');
+        return;
+      }
       setCurrentUser(user);
     } catch (err) {
       setLoginError('Access Denied. Invalid credentials or insufficient permissions.');
@@ -926,7 +932,9 @@ function AdminPanel({ currentUser, setCurrentUser }) {
     }
   };
 
-  if (!currentUser) {
+  const isHostUser = !!currentUser && (currentUser.roles || []).some((r) => r === 'Admin' || r === 'Organizer');
+
+  if (!isHostUser) {
     return (
       <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
         <GlobalStyle />
@@ -1088,7 +1096,12 @@ function AdminPanel({ currentUser, setCurrentUser }) {
             ].map((t) => (
               <button
                 key={t.key}
-                onClick={() => setPanelTab(t.key)}
+                onClick={() => {
+                  setPanelTab(t.key);
+                  if (t.key === 'payments') fetchPendingPayments();
+                  else if (t.key === 'past') fetchPastOrganizedEvents();
+                  else if (t.key === 'upcoming') fetchEvents();
+                }}
                 style={{
                   padding: '9px 18px',
                   borderRadius: '8px',

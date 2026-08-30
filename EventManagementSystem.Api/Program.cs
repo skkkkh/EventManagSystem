@@ -92,6 +92,11 @@ builder.Services.AddAuthentication(options =>
     })
     .AddJwtBearer(options =>
     {
+        // Without this, JwtSecurityTokenHandler silently remaps short JWT claim
+        // names ("role", "sub", ...) to long legacy XML-schema URIs before the
+        // ClaimsIdentity is built, so RoleClaimType = "role" below never matches
+        // and every [Authorize(Roles = "...")] check fails even for valid tokens.
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -128,14 +133,22 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        var allowedOrigins = new[]
-        {
-            "http://localhost:5173",
-            "http://localhost:5174",
-            builder.Configuration["FrontendUrl"] ?? "https://your-deployed-frontend-domain"
-        };
+        var deployedFrontendUrl = builder.Configuration["FrontendUrl"];
 
-        policy.WithOrigins(allowedOrigins)
+        policy.SetIsOriginAllowed(origin =>
+              {
+                  // Vite auto-increments its port (5173, 5174, 5175, ...) whenever
+                  // the previous one is still busy from an earlier run, so pin the
+                  // allow-list to "any localhost/127.0.0.1 port" in dev rather than
+                  // a fixed list that breaks the moment two dev servers overlap.
+                  if (Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                      (uri.Host == "localhost" || uri.Host == "127.0.0.1"))
+                  {
+                      return true;
+                  }
+
+                  return deployedFrontendUrl != null && origin == deployedFrontendUrl;
+              })
               .AllowAnyHeader()
               .AllowAnyMethod();
     });

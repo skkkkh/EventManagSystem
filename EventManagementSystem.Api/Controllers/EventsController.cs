@@ -85,7 +85,7 @@ public class EventsController : ControllerBase
         return Ok(dto);
     }
 
-    [Authorize]
+    [Authorize(Roles = "Admin,Organizer")]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] Event ev)
     {
@@ -112,7 +112,7 @@ public class EventsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = ev.Id }, ev);
     }
 
-    [Authorize]
+    [Authorize(Roles = "Admin,Organizer")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] Event ev)
     {
@@ -120,6 +120,13 @@ public class EventsController : ControllerBase
 
         var existing = await _unitOfWork.Events.GetByIdAsync(id);
         if (existing == null) return NotFound();
+
+        if (!User.IsInRole("Admin"))
+        {
+            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdClaim, out var requestingUserId) || existing.OrganizerId != requestingUserId)
+                return Forbid();
+        }
 
         var oldCapacity = existing.Capacity;
 
@@ -171,12 +178,19 @@ public class EventsController : ControllerBase
         return NoContent();
     }
 
-    [Authorize]
+    [Authorize(Roles = "Admin,Organizer")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
         var ev = await _unitOfWork.Events.GetByIdAsync(id);
         if (ev == null) return NotFound();
+
+        if (!User.IsInRole("Admin"))
+        {
+            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdClaim, out var requestingUserId) || ev.OrganizerId != requestingUserId)
+                return Forbid();
+        }
 
         var registrations = await _unitOfWork.Registrations.FindAsync(r => r.EventId == id);
         var registrantList = registrations.Select(r => (r.Email, r.FullName, r.UserId)).ToList();

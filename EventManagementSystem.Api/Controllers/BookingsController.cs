@@ -325,6 +325,7 @@ public class BookingsController : ControllerBase
         return Ok(new { message = "Payment confirmed. The booking is now confirmed." });
     }
 
+    [Authorize]
     [HttpPut("{id:int}/cancel")]
     public async Task<IActionResult> CancelBooking(int id)
     {
@@ -333,11 +334,24 @@ public class BookingsController : ControllerBase
         try
         {
             var booking = await _context.Bookings
-                .Include(b => b.TicketType)
+                .Include(b => b.TicketType).ThenInclude(t => t!.Event)
+                .Include(b => b.Registration)
                 .FirstOrDefaultAsync(b => b.Id == id);
 
             if (booking == null)
                 return NotFound();
+
+            // Only the attendee who made the booking, the event's organiser, or
+            // an admin may cancel it — otherwise any signed-in user could cancel
+            // anyone else's reservation just by guessing a booking id.
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int.TryParse(userIdClaim, out var requestingUserId);
+            var isOwner = booking.Registration != null && booking.Registration.UserId == requestingUserId;
+            var isOrganiserOfEvent = booking.TicketType?.Event != null && booking.TicketType.Event.OrganizerId == requestingUserId;
+            var isAdmin = User.IsInRole("Admin");
+
+            if (!isOwner && !isOrganiserOfEvent && !isAdmin)
+                return Forbid();
 
             if (booking.Status == BookingStatus.Cancelled)
                 return BadRequest("Booking is already cancelled.");
