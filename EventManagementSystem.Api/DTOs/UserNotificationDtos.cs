@@ -2,9 +2,17 @@ using EventManagementSystem.Api.Models;
 
 namespace EventManagementSystem.Api.DTOs;
 
-public record UserDto(int Id, string Name, string Email, string Role = "User", DateTime? RegistrationDate = null)
+public record UserDto(
+    int Id,
+    string Name,
+    string Email,
+    string Role = "User",
+    DateTime? RegistrationDate = null,
+    string? IdentificationNumberLast4 = null,
+    bool IsValidated = false)
 {
-    public static UserDto FromEntity(User u) => new(u.Id, u.Name, u.Email ?? string.Empty, u.Role, u.RegistrationDate);
+    public static UserDto FromEntity(User u) =>
+        new(u.Id, u.Name, u.Email ?? string.Empty, u.Role, u.RegistrationDate, u.IdentificationNumberLast4, u.IsValidated);
 }
 
 public record NotificationDto(int Id, int UserId, string Message, DateTime CreatedAt, bool IsRead, NotificationType Type)

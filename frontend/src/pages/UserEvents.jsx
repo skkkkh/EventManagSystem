@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 
+const API_ORIGIN = 'http://localhost:5003'; // matches this file's existing fetch URL
+
 function UserEvents() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Fetch upcoming events from the backend API
-    fetch('http://localhost:5003/api/events')
+    fetch(`${API_ORIGIN}/api/events`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch events');
         return res.json();
@@ -34,6 +35,13 @@ function UserEvents() {
         <div style={{ display: 'grid', gap: '15px', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
           {events.map(event => (
             <div key={event.id} style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px' }}>
+              {event.imageUrl && (
+                <img
+                  src={`${API_ORIGIN}${event.imageUrl}`}
+                  alt={event.title}
+                  style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '6px', marginBottom: '10px' }}
+                />
+              )}
               <h3>{event.title}</h3>
               <p>{event.description}</p>
               <p><strong>Date:</strong> {new Date(event.date).toLocaleDateString()}</p>

@@ -50,6 +50,8 @@ public class CreateEventCommandHandler : IRequestHandler<CreateEventCommand, Eve
             Title = dto.Title,
             Description = dto.Description,
             Location = dto.Location,
+            Organizer = dto.Organizer,
+            ImageUrl = dto.ImageUrl,
             StartDateTime = dto.StartDateTime,
             EndDateTime = dto.EndDateTime,
             Capacity = dto.Capacity,

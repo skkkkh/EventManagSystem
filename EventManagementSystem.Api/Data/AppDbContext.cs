@@ -51,7 +51,36 @@ public class AppDbContext
 
     public DbSet<Notification> Notifications
         => Set<Notification>();
+    // --------------------------------------------------
+    // Groups
+    // --------------------------------------------------
 
+    public DbSet<Group> Groups
+        => Set<Group>();
+
+    public DbSet<GroupMember> GroupMembers
+        => Set<GroupMember>();
+
+    // ------------------------------------------------
+    // Reviews
+    // ------------------------------------------------
+
+    public DbSet<Review> Reviews
+        => Set<Review>();
+
+    // --------------------------------------------------
+    // Organizer "About Us" (public profile / leadership team)
+    // --------------------------------------------------
+
+    public DbSet<TeamMember> TeamMembers
+        => Set<TeamMember>();
+
+    // --------------------------------------------------
+    // Saved Events (bookmarks)
+    // --------------------------------------------------
+
+    public DbSet<SavedEvent> SavedEvents
+        => Set<SavedEvent>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
@@ -206,5 +235,75 @@ public class AppDbContext
             .WithMany(u => u.Notifications)
             .HasForeignKey(n => n.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // --------------------------------------------------
+        // Group 1 --- * GroupMember, User 1 --- * GroupMember
+        // --------------------------------------------------
+
+        modelBuilder.Entity<GroupMember>()
+            .HasOne(gm => gm.Group)
+            .WithMany(g => g.Members)
+            .HasForeignKey(gm => gm.GroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<GroupMember>()
+            .HasOne(gm => gm.User)
+            .WithMany()
+            .HasForeignKey(gm => gm.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // --------------------------------------------------
+        // User (Organiser) 1 --- * Group
+        // --------------------------------------------------
+
+        modelBuilder.Entity<Group>()
+            .HasOne(g => g.Organiser)
+            .WithMany()
+            .HasForeignKey(g => g.OrganiserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // --------------------------------------------------
+        // Group 1 --- * Event (nullable, restricts visibility)
+        // --------------------------------------------------
+
+        modelBuilder.Entity<Event>()
+            .HasOne(e => e.Group)
+            .WithMany()
+            .HasForeignKey(e => e.GroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Review>()
+            .HasIndex(r => new { r.EventId, r.UserId })
+            .IsUnique();
+
+        // --------------------------------------------------
+        // User (Organizer) 1 --- * TeamMember
+        // --------------------------------------------------
+
+        modelBuilder.Entity<TeamMember>()
+            .HasOne(t => t.Organizer)
+            .WithMany()
+            .HasForeignKey(t => t.OrganizerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // --------------------------------------------------
+        // User 1 --- * SavedEvent, Event 1 --- * SavedEvent
+        // --------------------------------------------------
+
+        modelBuilder.Entity<SavedEvent>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SavedEvent>()
+            .HasOne(s => s.Event)
+            .WithMany()
+            .HasForeignKey(s => s.EventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SavedEvent>()
+            .HasIndex(s => new { s.UserId, s.EventId })
+            .IsUnique();
     }
 }

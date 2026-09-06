@@ -46,6 +46,15 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
 
             var totalAmount = ticketType.Price * dto.Quantity;
 
+            // A booking is free the moment it costs nothing, regardless of
+            // what the caller passed for IsPaid — mirrors GuestCheckout's
+            // "only truly-free events auto-confirm" rule, but computed here
+            // too so any client hitting this endpoint directly (e.g. the
+            // Flutter app, which never sends IsPaid at all and would
+            // otherwise default to false/Pending even for a free event)
+            // gets the same behaviour without needing to know the rule.
+            var isPaid = totalAmount <= 0 || dto.IsPaid;
+
             ticketType.Quantity -= dto.Quantity;
             _uow.TicketTypes.Update(ticketType);
 
@@ -55,23 +64,29 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 TicketTypeId = dto.TicketTypeId,
                 Quantity = dto.Quantity,
                 TotalAmount = totalAmount,
-                Status = dto.IsPaid ? BookingStatus.Confirmed : BookingStatus.Pending,
-                IsPaid = dto.IsPaid,
+                Status = isPaid ? BookingStatus.Confirmed : BookingStatus.Pending,
+                IsPaid = isPaid,
                 BookedAt = DateTime.UtcNow
             };
 
             await _uow.Bookings.AddAsync(booking);
             await _uow.SaveChangesAsync();
 
-            if (dto.IsPaid)
+            // Record a Payment row whenever a method was declared, even if
+            // it's not confirmed yet — this is what lets the organiser see
+            // "how they said they'd pay" in the pending-payments list, and
+            // what confirm-payment later flips to Completed. A free event
+            // with no declared method (isPaid but no PaymentMethod) doesn't
+            // need one at all since there's nothing to collect.
+            if (isPaid || !string.IsNullOrWhiteSpace(dto.PaymentMethod))
             {
                 var payment = new Payment
                 {
                     Booking = booking,
                     Amount = booking.TotalAmount,
-                    PaymentMethod = "Card (mock)",
-                    Status = PaymentStatus.Completed,
-                    TransactionReference = Guid.NewGuid().ToString(),
+                    PaymentMethod = dto.PaymentMethod ?? "Card (mock)",
+                    Status = isPaid ? PaymentStatus.Completed : PaymentStatus.Pending,
+                    TransactionReference = isPaid ? Guid.NewGuid().ToString() : null,
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -79,22 +94,25 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 await _uow.SaveChangesAsync();
             }
 
-            // Email confirmation to the registrant
+            // Email + in-app notification to the registrant
             await _mediator.Publish(new BookingConfirmedEvent
             {
                 BookingId = booking.Id,
                 RegistrationEmail = registration.Email,
                 RegistrationName = registration.FullName,
-                EventTitle = ev?.Title ?? "the event"
+                EventTitle = ev?.Title ?? "the event",
+                UserId = registration.UserId,
+                IsPaid = isPaid
             }, cancellationToken);
 
-            // Email confirmation to the organizer, keeping them updated on registration activity
+            // Email + in-app notification to the organizer, keeping them updated on registration activity
             await _mediator.Publish(new OrganizerBookingUpdateEvent
             {
                 OrganizerId = ev?.OrganizerId,
                 EventTitle = ev?.Title ?? "the event",
                 RegistrantName = registration.FullName,
-                Quantity = dto.Quantity
+                Quantity = dto.Quantity,
+                IsPaid = isPaid
             }, cancellationToken);
 
             // In-app alert to organizer if capacity is now full

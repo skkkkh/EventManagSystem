@@ -39,18 +39,20 @@ public class PaymentsController : ControllerBase
         if (booking.Payment != null)
             return BadRequest("Payment already exists for this booking.");
 
+        // This only records the attendee's declared payment method — it
+        // does not confirm the booking. The organiser still has to confirm
+        // the payment was actually received (PUT
+        // /api/Bookings/{id}/confirm-payment) before the booking counts as
+        // paid, same as a payment method declared at booking-creation time.
         var payment = new Payment
         {
             BookingId = booking.Id,
             Amount = booking.TotalAmount,
             PaymentMethod = dto.PaymentMethod,
-            Status = PaymentStatus.Completed,
-            TransactionReference =
-                $"TXN-{Guid.NewGuid():N}".ToUpper(),
+            Status = PaymentStatus.Pending,
+            TransactionReference = null,
             CreatedAt = DateTime.UtcNow
         };
-
-        booking.Status = BookingStatus.Confirmed;
 
         _context.Payments.Add(payment);
 

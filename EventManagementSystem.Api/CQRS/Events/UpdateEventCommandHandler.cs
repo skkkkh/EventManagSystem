@@ -90,10 +90,14 @@ public class UpdateEventCommandHandler : IRequestHandler<UpdateEventCommand, Uni
         entity.Title = dto.Title;
         entity.Description = dto.Description;
         entity.Location = dto.Location;
+        entity.Organizer = dto.Organizer;
         entity.StartDateTime = dto.StartDateTime;
         entity.EndDateTime = dto.EndDateTime;
         entity.Capacity = dto.Capacity;
         entity.IsPublished = dto.IsPublished;
+        entity.Category = Enum.TryParse<EventCategory>(dto.Category, true, out var parsedCat)
+            ? parsedCat
+            : entity.Category; // keep existing value if dto.Category is missing/invalid
 
         // Update event image
         entity.ImageUrl = dto.ImageUrl;

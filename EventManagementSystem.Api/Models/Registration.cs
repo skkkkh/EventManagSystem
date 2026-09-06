@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EventManagementSystem.Api.Models;
 
@@ -20,9 +21,9 @@ public class Registration
     public int EventId { get; set; }
     public Event? Event { get; set; }
 
-    // NEW — links to a logged-in User account when the registrant is authenticated.
-    // Stays null for guest checkout, since that flow doesn't require login.
     public int? UserId { get; set; }
+
+    [ForeignKey("UserId")]
     public User? User { get; set; }
 
     public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;

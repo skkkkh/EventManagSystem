@@ -9,8 +9,15 @@ export const authService = {
     return response.data;
   },
 
-  register: async (name, email, password, role, interests) => {
-    const response = await API.post('/api/auth/register', { name, email, password, role, interests });
+  register: async (name, email, password, role, interests, identificationNumber) => {
+    const response = await API.post('/api/auth/register', {
+      name,
+      email,
+      password,
+      role,
+      interests,
+      identificationNumber
+    });
     if (response.data.token) {
       localStorage.setItem('user', JSON.stringify(response.data));
     }
@@ -22,6 +29,24 @@ export const authService = {
     if (response.data.token) {
       localStorage.setItem('user', JSON.stringify(response.data));
     }
+    return response.data;
+  },
+
+  updateProfile: async (name, phone) => {
+    const response = await API.put('/api/auth/profile', { name, phone });
+    if (response.data.token) {
+      localStorage.setItem('user', JSON.stringify(response.data));
+    }
+    return response.data;
+  },
+
+  forgotPassword: async (email) => {
+    const response = await API.post('/api/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  resetPassword: async (email, token, newPassword) => {
+    const response = await API.post('/api/auth/reset-password', { email, token, newPassword });
     return response.data;
   },
 

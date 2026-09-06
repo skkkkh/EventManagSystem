@@ -22,10 +22,11 @@ public class SendOrganizerBookingUpdateHandler : INotificationHandler<OrganizerB
         var organizer = await _uow.Users.GetByIdAsync(e.OrganizerId.Value);
         if (organizer?.Email is null) return;
 
-        await _email.SendAsync(
-            organizer.Email,
-            "New Booking Received",
-            $"<p>Hi {organizer.Name},</p><p>{e.RegistrantName} just booked {e.Quantity} ticket(s) for <b>{e.EventTitle}</b>.</p>"
-        );
+        var subject = e.IsPaid ? "New Booking Received" : "New Booking — Payment Confirmation Needed";
+        var body = e.IsPaid
+            ? $"<p>Hi {organizer.Name},</p><p>{e.RegistrantName} just booked {e.Quantity} ticket(s) for <b>{e.EventTitle}</b>.</p>"
+            : $"<p>Hi {organizer.Name},</p><p>{e.RegistrantName} just booked {e.Quantity} ticket(s) for <b>{e.EventTitle}</b> and declared how they'll pay. Go to your Host Control Center to confirm the payment once you've received it — the seat won't be finalised until then.</p>";
+
+        await _email.SendAsync(organizer.Email, subject, body);
     }
 }

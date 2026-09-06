@@ -24,16 +24,13 @@ public class RegistrationsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<RegistrationResponseDto>>
-        CreateRegistration(CreateRegistrationDto dto)
+    public async Task<ActionResult<RegistrationResponseDto>> CreateRegistration(CreateRegistrationDto dto)
     {
-        var eventExists = await _context.Events
-            .AnyAsync(e => e.Id == dto.EventId);
+        var eventExists = await _context.Events.AnyAsync(e => e.Id == dto.EventId);
 
         if (!eventExists)
             return NotFound("Event not found.");
 
-        // NEW — capture the logged-in user's account so in-app alerts can reach them later
         int? userId = null;
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (int.TryParse(userIdClaim, out var parsedUserId))
@@ -70,8 +67,7 @@ public class RegistrationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<RegistrationResponseDto>>>
-        GetRegistrations()
+    public async Task<ActionResult<IEnumerable<RegistrationResponseDto>>> GetRegistrations()
     {
         var registrations = await _context.Registrations
             .AsNoTracking()
@@ -89,8 +85,7 @@ public class RegistrationsController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<RegistrationResponseDto>>
-        GetRegistration(int id)
+    public async Task<ActionResult<RegistrationResponseDto>> GetRegistration(int id)
     {
         var registration = await _context.Registrations
             .AsNoTracking()

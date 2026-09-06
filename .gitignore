@@ -18,3 +18,9 @@ obj/
 .DS_Store
 Thumbs.db
 EventManagementSystem.Api/appsettings.Development.json
+## Archives / backups (not source)
+*.zip
+
+## Runtime-uploaded media (test data, not source)
+EventManagementSystem.Api/wwwroot/uploads/*
+!EventManagementSystem.Api/wwwroot/uploads/.gitkeep

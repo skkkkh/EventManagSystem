@@ -1,5 +1,6 @@
 // eventService.js
-const API_BASE_URL = 'https://localhost:7080/api/events';
+// Relative — goes through Vite's dev-server proxy to the backend.
+const API_BASE_URL = '/api/events';
 
 const getAuthHeaders = () => {
     let token = null;
@@ -30,7 +31,7 @@ const getAuthHeaders = () => {
 export const eventService = {
     async getAllEvents(includeExpired = false) {
         const url = includeExpired ? `${API_BASE_URL}?includeExpired=true` : API_BASE_URL;
-        const response = await fetch(url);
+        const response = await fetch(url, { cache: 'no-store', headers: getAuthHeaders() });
         if (!response.ok) throw new Error('Failed to fetch events');
         return response.json();
     },
