@@ -46,6 +46,15 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
 
             var totalAmount = ticketType.Price * dto.Quantity;
 
+            // A booking is free the moment it costs nothing, regardless of
+            // what the caller passed for IsPaid — mirrors GuestCheckout's
+            // "only truly-free events auto-confirm" rule, but computed here
+            // too so any client hitting this endpoint directly (e.g. the
+            // Flutter app, which never sends IsPaid at all and would
+            // otherwise default to false/Pending even for a free event)
+            // gets the same behaviour without needing to know the rule.
+            var isPaid = totalAmount <= 0 || dto.IsPaid;
+
             ticketType.Quantity -= dto.Quantity;
             _uow.TicketTypes.Update(ticketType);
 
@@ -55,8 +64,8 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 TicketTypeId = dto.TicketTypeId,
                 Quantity = dto.Quantity,
                 TotalAmount = totalAmount,
-                Status = dto.IsPaid ? BookingStatus.Confirmed : BookingStatus.Pending,
-                IsPaid = dto.IsPaid,
+                Status = isPaid ? BookingStatus.Confirmed : BookingStatus.Pending,
+                IsPaid = isPaid,
                 BookedAt = DateTime.UtcNow
             };
 
@@ -67,17 +76,17 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
             // it's not confirmed yet — this is what lets the organiser see
             // "how they said they'd pay" in the pending-payments list, and
             // what confirm-payment later flips to Completed. A free event
-            // with no declared method (IsPaid but no PaymentMethod) doesn't
+            // with no declared method (isPaid but no PaymentMethod) doesn't
             // need one at all since there's nothing to collect.
-            if (dto.IsPaid || !string.IsNullOrWhiteSpace(dto.PaymentMethod))
+            if (isPaid || !string.IsNullOrWhiteSpace(dto.PaymentMethod))
             {
                 var payment = new Payment
                 {
                     Booking = booking,
                     Amount = booking.TotalAmount,
                     PaymentMethod = dto.PaymentMethod ?? "Card (mock)",
-                    Status = dto.IsPaid ? PaymentStatus.Completed : PaymentStatus.Pending,
-                    TransactionReference = dto.IsPaid ? Guid.NewGuid().ToString() : null,
+                    Status = isPaid ? PaymentStatus.Completed : PaymentStatus.Pending,
+                    TransactionReference = isPaid ? Guid.NewGuid().ToString() : null,
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -93,7 +102,7 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 RegistrationName = registration.FullName,
                 EventTitle = ev?.Title ?? "the event",
                 UserId = registration.UserId,
-                IsPaid = dto.IsPaid
+                IsPaid = isPaid
             }, cancellationToken);
 
             // Email + in-app notification to the organizer, keeping them updated on registration activity
@@ -103,7 +112,7 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
                 EventTitle = ev?.Title ?? "the event",
                 RegistrantName = registration.FullName,
                 Quantity = dto.Quantity,
-                IsPaid = dto.IsPaid
+                IsPaid = isPaid
             }, cancellationToken);
 
             // In-app alert to organizer if capacity is now full

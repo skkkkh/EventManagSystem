@@ -8,8 +8,13 @@ import { groupService } from './groupService';
 import { userService } from './userService';
 import { recommendationService } from './recommendationService';
 import NotificationBell from './components/NotificationBell';
+import { imageService } from './imageService';
+import { savedEventsService } from './savedEventsService';
+import { organizerProfileService } from './organizerProfileService';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 const colors = {
   bg: '#FFF8F4',
@@ -34,6 +39,125 @@ const CATEGORY_OPTIONS = ['Conference', 'Workshop', 'Meeting', 'Shows', 'Other']
 // "Unlimited" instead of the raw number.
 const UNLIMITED_CAPACITY = 999999;
 const INTEREST_OPTIONS = ['Technology', 'Science', 'Entertainment', 'Business', 'Sports', 'Art & Culture', 'Health & Wellness', 'Education'];
+
+// Shared date+time formatter so every event listing (public cards, host
+// control center rows, past events, etc.) shows the event's start time
+// alongside its date, not just the date.
+const formatEventDateTime = (value) => {
+  if (!value) return 'Date & time TBA';
+  const d = new Date(value);
+  if (isNaN(d)) return 'Date & time TBA';
+  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+const formatEventTime = (value) => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+};
+
+// --- Dummy card-payment helpers -------------------------------------------
+// This app never talks to a real bank or wallet. These helpers back a mock
+// "enter your card" step so the payment flow looks and feels real, while the
+// actual booking still only records a human-readable note (e.g. "Card ending
+// in 1234 (exp 09/28)") for the organiser to see — the full card number and
+// CVV never leave the browser, and the CVV is never sent to the backend at
+// all, even in this mocked form.
+const formatCardNumberInput = (raw) => raw.replace(/\D/g, '').slice(0, 16);
+const formatCvvInput = (raw) => raw.replace(/\D/g, '').slice(0, 3);
+const formatExpiryInput = (raw) => {
+  const digits = raw.replace(/\D/g, '').slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+};
+const isValidCardNumber = (v) => /^\d{12}$/.test(v) || /^\d{16}$/.test(v);
+const isValidCvv = (v) => /^\d{3}$/.test(v);
+const isValidExpiry = (v) => {
+  const match = /^(0[1-9]|1[0-2])\/(\d{2})$/.exec(v);
+  if (!match) return false;
+  const month = parseInt(match[1], 10);
+  const year = 2000 + parseInt(match[2], 10);
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  if (year < currentYear) return false;
+  if (year === currentYear && month < currentMonth) return false;
+  return true;
+};
+const isCardDetailsValid = (cardNumber, cvv, expiry) =>
+  isValidCardNumber(cardNumber) && isValidCvv(cvv) && isValidExpiry(expiry);
+const buildCardPaymentSummary = (cardNumber, expiry) =>
+  `Card ending in ${cardNumber.slice(-4)} (exp ${expiry})`;
+
+// Shared mock card-entry fields, used everywhere a "how will you pay?" step
+// used to just be a free-text box. Purely a UI mock: nothing here is
+// processed as a real payment.
+function CardPaymentFields({ cardNumber, cvv, expiry, onCardNumberChange, onCvvChange, onExpiryChange }) {
+  const cardNumberTouched = cardNumber.length > 0;
+  const cvvTouched = cvv.length > 0;
+  const expiryTouched = expiry.length > 0;
+  const inputStyle = {
+    width: '100%',
+    padding: '12px 14px',
+    borderRadius: '10px',
+    border: `1.5px solid ${colors.roseSoft}`,
+    outline: 'none',
+    fontSize: '14px',
+    color: colors.ink,
+  };
+  return (
+    <div style={{ marginBottom: '10px' }}>
+      <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: colors.wine, letterSpacing: '0.3px' }}>
+        CARD DETAILS (MOCK — NO REAL CHARGE)
+      </p>
+      <div style={{ marginBottom: '10px' }}>
+        <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: colors.ink, marginBottom: '5px' }}>Card / Account Number</label>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={cardNumber}
+          onChange={(e) => onCardNumberChange(formatCardNumberInput(e.target.value))}
+          placeholder="12 or 16 digits"
+          style={{ ...inputStyle, borderColor: cardNumberTouched && !isValidCardNumber(cardNumber) ? '#C0392B' : colors.roseSoft }}
+        />
+        {cardNumberTouched && !isValidCardNumber(cardNumber) && (
+          <p style={{ margin: '4px 0 0 0', fontSize: '11.5px', color: '#C0392B' }}>Enter exactly 12 or 16 digits.</p>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '4px' }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: colors.ink, marginBottom: '5px' }}>Expiry (MM/YY)</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={expiry}
+            onChange={(e) => onExpiryChange(formatExpiryInput(e.target.value))}
+            placeholder="MM/YY"
+            style={{ ...inputStyle, borderColor: expiryTouched && !isValidExpiry(expiry) ? '#C0392B' : colors.roseSoft }}
+          />
+          {expiryTouched && !isValidExpiry(expiry) && (
+            <p style={{ margin: '4px 0 0 0', fontSize: '11.5px', color: '#C0392B' }}>Use a valid, non-expired MM/YY.</p>
+          )}
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: colors.ink, marginBottom: '5px' }}>CVV</label>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={cvv}
+            onChange={(e) => onCvvChange(formatCvvInput(e.target.value))}
+            placeholder="3 digits"
+            style={{ ...inputStyle, borderColor: cvvTouched && !isValidCvv(cvv) ? '#C0392B' : colors.roseSoft }}
+          />
+          {cvvTouched && !isValidCvv(cvv) && (
+            <p style={{ margin: '4px 0 0 0', fontSize: '11.5px', color: '#C0392B' }}>3 digits.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function GlobalStyle() {
   return (
@@ -88,13 +212,16 @@ function LandingPage() {
   );
 }
 
-function EventCard({ event, onRegister, reason }) {
+function EventCard({ event, onRegister, reason, currentUser, onSavedChange }) {
   const title = event.title || event.name;
   const rawDate = event.date || event.startDateTime || event.StartDateTime;
   const dateObj = rawDate ? new Date(rawDate) : null;
   const day = dateObj && !isNaN(dateObj) ? dateObj.getDate() : '—';
   const month = dateObj && !isNaN(dateObj) ? dateObj.toLocaleDateString(undefined, { month: 'short' }).toUpperCase() : 'TBA';
+  const timeStr = formatEventTime(rawDate);
+  const imageUrl = imageService.resolveImageUrl(event.imageUrl || event.ImageUrl);
   const organizer = event.organizer || event.Organizer || 'General Host';
+  const organizerId = event.organizerId ?? event.OrganizerId;
   const category = event.category || event.Category;
   const seatsRemaining = event.seatsRemaining ?? event.SeatsRemaining;
   const capacity = event.capacity ?? event.Capacity;
@@ -102,13 +229,61 @@ function EventCard({ event, onRegister, reason }) {
   const isFull = seatsRemaining === 0;
   const price = event.price ?? event.Price;
   const isFree = !price || price <= 0;
+  const eventId = event.id || event.eventId;
+
+  const [saved, setSaved] = useState(false);
+  const [savingBookmark, setSavingBookmark] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+
+  useEffect(() => {
+    if (!currentUser || !eventId) { setSaved(false); return; }
+    let cancelled = false;
+    savedEventsService.getStatus(eventId)
+      .then((s) => { if (!cancelled) setSaved(!!s.isSaved); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentUser, eventId]);
+
+  const toggleSaved = async (e) => {
+    e.stopPropagation();
+    if (!currentUser) { alert('Log in to save events for later.'); return; }
+    setSavingBookmark(true);
+    try {
+      if (saved) {
+        await savedEventsService.unsave(eventId);
+        setSaved(false);
+        if (onSavedChange) onSavedChange(eventId, false);
+      } else {
+        await savedEventsService.save(eventId);
+        setSaved(true);
+        if (onSavedChange) onSavedChange(eventId, true);
+      }
+    } catch (err) {
+      alert('Failed to update saved events. Please try again.');
+    } finally {
+      setSavingBookmark(false);
+    }
+  };
 
   return (
-    <div className="es-card" style={{ background: colors.card, borderRadius: '18px', boxShadow: '0 6px 20px rgba(127,19,48,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="es-card" style={{ background: colors.card, borderRadius: '18px', boxShadow: '0 6px 20px rgba(127,19,48,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       {reason && (
         <div style={{ background: colors.wine, color: '#fff', fontSize: '11px', fontWeight: 700, padding: '6px 16px', letterSpacing: '0.3px' }}>
           ✨ {reason}
         </div>
+      )}
+      {currentUser && eventId && (
+        <button
+          onClick={toggleSaved}
+          disabled={savingBookmark}
+          title={saved ? 'Remove from saved events' : 'Save event'}
+          style={{ position: 'absolute', top: '10px', right: '10px', width: '34px', height: '34px', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: savingBookmark ? 'not-allowed' : 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.18)', zIndex: 2 }}
+        >
+          {saved ? '🔖' : '📑'}
+        </button>
+      )}
+      {imageUrl && (
+        <img src={imageUrl} alt={title} style={{ width: '100%', height: '150px', objectFit: 'cover', display: 'block' }} />
       )}
       <div style={{ padding: '22px 24px 18px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
@@ -132,6 +307,17 @@ function EventCard({ event, onRegister, reason }) {
             </span>
           )}
         </div>
+        {organizerId && (
+          <button
+            onClick={() => {
+              if (!currentUser) { alert('Log in to view organizer profiles.'); return; }
+              setShowAbout(true);
+            }}
+            style={{ background: 'transparent', border: 'none', padding: 0, color: colors.teal, fontSize: '12px', fontWeight: 600, cursor: 'pointer', marginBottom: '10px', textDecoration: 'underline' }}
+          >
+            ℹ️ About the Organizer
+          </button>
+        )}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
           {category && (
             <span style={{ display: 'inline-block', background: colors.teal, color: '#fff', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.3px' }}>
@@ -147,9 +333,16 @@ function EventCard({ event, onRegister, reason }) {
             <span style={{ fontSize: '18px', fontWeight: 700, fontFamily: fontDisplay }}>{day}</span>
             <span style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{month}</span>
           </div>
-          <h4 style={{ margin: '4px 0 0 0', color: colors.ink, fontFamily: fontDisplay, fontSize: '19px', fontWeight: 600, lineHeight: 1.3 }}>
-            {title}
-          </h4>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h4 style={{ margin: '4px 0 2px 0', color: colors.ink, fontFamily: fontDisplay, fontSize: '19px', fontWeight: 600, lineHeight: 1.3 }}>
+              {title}
+            </h4>
+            {timeStr && (
+              <p style={{ margin: 0, fontSize: '12px', color: colors.muted, fontWeight: 600 }}>
+                🕒 {timeStr}
+              </p>
+            )}
+          </div>
         </div>
         <p style={{ color: colors.muted, fontFamily: fontBody, fontSize: '14px', lineHeight: 1.65, margin: 0, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '68px' }}>
           {event.description}
@@ -180,6 +373,69 @@ function EventCard({ event, onRegister, reason }) {
         >
           {isFull ? 'Sold Out' : 'Reserve a Spot'}
         </button>
+      </div>
+      {showAbout && (
+        <OrganizerAboutModal organizerId={organizerId} organizerName={organizer} onClose={() => setShowAbout(false)} />
+      )}
+    </div>
+  );
+}
+
+function OrganizerAboutModal({ organizerId, organizerName, onClose }) {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    organizerProfileService.getProfile(organizerId)
+      .then((data) => { setProfile(data); setLoading(false); })
+      .catch(() => { setError('Failed to load organizer profile.'); setLoading(false); });
+  }, [organizerId]);
+
+  return (
+    <div
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(45,35,38,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: colors.card, borderRadius: '18px', padding: '30px', width: '100%', maxWidth: '480px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+          <h3 style={{ margin: 0, fontFamily: fontDisplay, color: colors.wine, fontSize: '22px' }}>
+            {profile?.organizerName || organizerName || 'About the Organizer'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: colors.muted, lineHeight: 1 }}>✕</button>
+        </div>
+        {loading && <p style={{ color: colors.muted }}>Loading...</p>}
+        {error && <p style={{ color: '#b3261e' }}>{error}</p>}
+        {profile && (
+          <>
+            <p style={{ color: colors.ink, fontSize: '14px', lineHeight: 1.6, whiteSpace: 'pre-wrap', marginBottom: '24px' }}>
+              {profile.aboutUs || "This organizer hasn't added a bio yet."}
+            </p>
+            {profile.teamMembers?.length > 0 && (
+              <>
+                <p style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, letterSpacing: '0.4px', marginBottom: '14px' }}>LEADERSHIP TEAM</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', justifyContent: 'center' }}>
+                  {profile.teamMembers.map((m) => (
+                    <div key={m.id} style={{ textAlign: 'center', width: '96px' }}>
+                      <div style={{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden', margin: '0 auto 8px', background: colors.roseSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {m.photoUrl ? (
+                          <img src={imageService.resolveImageUrl(m.photoUrl)} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ fontSize: '24px' }}>👤</span>
+                        )}
+                      </div>
+                      <p style={{ margin: '0 0 2px 0', fontSize: '13px', fontWeight: 700, color: colors.ink }}>{m.name}</p>
+                      <p style={{ margin: 0, fontSize: '11px', color: colors.muted }}>{m.title}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -333,7 +589,15 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
   const [booking, setBooking] = useState(false);
   const [activeTab, setActiveTab] = useState('interests');
   const [reserveModalEvent, setReserveModalEvent] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterMinPrice, setFilterMinPrice] = useState('');
+  const [filterMaxPrice, setFilterMaxPrice] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -357,9 +621,34 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
+  const matchesFilters = (event) => {
+    const category = event.category || event.Category;
+    const price = event.price ?? event.Price ?? 0;
+    const rawDate = event.date || event.startDateTime || event.StartDateTime;
+    const eventDate = rawDate ? new Date(rawDate) : null;
+
+    if (filterCategory && category !== filterCategory) return false;
+    if (filterMinPrice && price < parseFloat(filterMinPrice)) return false;
+    if (filterMaxPrice && price > parseFloat(filterMaxPrice)) return false;
+    if (filterStartDate && eventDate && !isNaN(eventDate) && eventDate < new Date(filterStartDate)) return false;
+    if (filterEndDate && eventDate && !isNaN(eventDate) && eventDate > new Date(`${filterEndDate}T23:59:59`)) return false;
+    return true;
+  };
+
+  const hasActiveFilters = !!(filterCategory || filterMinPrice || filterMaxPrice || filterStartDate || filterEndDate);
+  const activeFilterCount = [filterCategory, (filterMinPrice || filterMaxPrice), (filterStartDate || filterEndDate)].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setFilterCategory('');
+    setFilterMinPrice('');
+    setFilterMaxPrice('');
+    setFilterStartDate('');
+    setFilterEndDate('');
+  };
+
   const filteredEvents = events.filter((event) => {
     const org = event.organizer || event.Organizer || '';
-    return org.toLowerCase().includes(searchTerm.toLowerCase());
+    return org.toLowerCase().includes(searchTerm.toLowerCase()) && matchesFilters(event);
   });
 
   const refreshAll = async () => {
@@ -373,7 +662,9 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
       navigate('/login');
       return;
     }
-    setPaymentMethod('');
+    setCardNumber('');
+    setCardCvv('');
+    setCardExpiry('');
     setReserveModalEvent(event);
   };
 
@@ -384,6 +675,11 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
     const price = event.price ?? event.Price;
     const isFree = !price || price <= 0;
 
+    if (!isFree && !isCardDetailsValid(cardNumber, cardCvv, cardExpiry)) {
+      alert('Please enter a valid card number (12 or 16 digits), CVV (3 digits) and a non-expired MM/YY expiry.');
+      return;
+    }
+
     setBooking(true);
     try {
       await bookingService.guestCheckout({
@@ -392,10 +688,13 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
         phone: '',
         eventId,
         quantity: 1,
-        cardNumber: '',
+        // Mock card details only — never a real charge. Only the last 4
+        // digits are sent along (as a human-readable note for the
+        // organiser); the CVV is never transmitted at all.
+        cardNumber: isFree ? '' : cardNumber.slice(-4),
         cardName: '',
-        cardExpiry: '',
-        paymentMethod: isFree ? null : paymentMethod,
+        cardExpiry: isFree ? '' : cardExpiry,
+        paymentMethod: isFree ? null : buildCardPaymentSummary(cardNumber, cardExpiry),
       });
 
       await refreshAll();
@@ -403,7 +702,7 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
       if (isFree) {
         alert(`Successfully reserved spot for: ${title}`);
       } else {
-        alert(`Reservation submitted for: ${title}. Your seat will be confirmed once the organiser verifies your payment — check My Bookings for status.`);
+        alert(`Reservation submitted for: ${title}. Your payment is yet to be confirmed — the organiser will confirm it from their side, check My Bookings for status.`);
       }
     } catch (err) {
       const msg = err.response?.data || 'Failed to reserve spot. Please try again.';
@@ -425,6 +724,8 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
                 <Link to="/my-bookings" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>My Bookings</Link>
                 <Link to="/my-past-events" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>Past Events</Link>
                 <Link to="/rate-events" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>Rate Events</Link>
+                <Link to="/saved-events" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>Saved Events</Link>
+                <Link to="/profile" style={{ color: colors.wine, textDecoration: 'none', fontWeight: 600, fontSize: '13px' }}>Profile</Link>
                 <NotificationBell currentUser={currentUser} />
                 <span style={{ fontSize: '13px', color: colors.muted }}>Hi, <strong>{currentUser.name}</strong></span>
                 <button
@@ -483,24 +784,138 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
         )}
 
         {(!currentUser || activeTab === 'all') && (
-          <div style={{ padding: '10px 0 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px' }}>
+          <>
+          <div style={{ padding: '10px 0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px' }}>
             <div>
               <h1 style={{ margin: '0 0 10px 0', fontFamily: fontDisplay, fontSize: '42px', color: colors.ink, fontWeight: 600 }}>
                 Upcoming <span style={{ fontStyle: 'italic', color: colors.wine }}>Public Events</span>
               </h1>
             </div>
 
-            <div style={{ width: '100%', maxWidth: '350px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: colors.muted, marginBottom: '6px' }}>SEARCH BY SOCIETY / ORGANIZER</label>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="e.g. Ushers, ACM, IEEE..."
-                style={{ width: '100%', padding: '12px 16px', borderRadius: '12px', border: `1px solid ${colors.roseSoft}`, background: colors.card, outline: 'none', fontSize: '14px' }}
-              />
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ width: '260px', maxWidth: '100%' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: colors.muted, marginBottom: '6px' }}>SEARCH BY SOCIETY / ORGANIZER</label>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="e.g. Ushers, ACM, IEEE..."
+                  style={{ width: '100%', padding: '12px 16px', borderRadius: '12px', border: `1px solid ${colors.roseSoft}`, background: colors.card, outline: 'none', fontSize: '14px' }}
+                />
+              </div>
+              <button
+                onClick={() => setShowFilters((v) => !v)}
+                style={{
+                  padding: '12px 18px',
+                  borderRadius: '12px',
+                  border: `1.5px solid ${hasActiveFilters ? colors.wine : colors.roseSoft}`,
+                  background: hasActiveFilters ? colors.wine : colors.card,
+                  color: hasActiveFilters ? '#fff' : colors.ink,
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                🔍 Filters{hasActiveFilters ? ` (${activeFilterCount})` : ''}
+              </button>
             </div>
           </div>
+
+          {showFilters && (
+            <div style={{ background: colors.card, border: `1px solid ${colors.roseSoft}`, borderRadius: '14px', padding: '20px', marginBottom: '16px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: '160px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: colors.muted, marginBottom: '6px' }}>CATEGORY</label>
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody }}
+                >
+                  <option value="">All categories</option>
+                  {CATEGORY_OPTIONS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ minWidth: '220px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: colors.muted, marginBottom: '6px' }}>PRICE RANGE (Rs.)</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="0"
+                    value={filterMinPrice}
+                    onChange={(e) => setFilterMinPrice(e.target.value)}
+                    placeholder="Min"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }}
+                  />
+                  <span style={{ color: colors.muted }}>–</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={filterMaxPrice}
+                    onChange={(e) => setFilterMaxPrice(e.target.value)}
+                    placeholder="Max"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ minWidth: '260px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: colors.muted, marginBottom: '6px' }}>DATE RANGE</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody }}
+                  />
+                  <span style={{ color: colors.muted }}>–</span>
+                  <input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <button
+                  onClick={clearFilters}
+                  disabled={!hasActiveFilters}
+                  style={{ background: 'transparent', border: `1.5px solid ${colors.roseSoft}`, color: colors.muted, padding: '10px 16px', borderRadius: '10px', cursor: hasActiveFilters ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: '13px' }}
+                >
+                  Clear all
+                </button>
+              </div>
+            </div>
+          )}
+
+          {hasActiveFilters && (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+              {filterCategory && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: colors.roseSoft, color: colors.wine, padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}>
+                  {filterCategory}
+                  <button onClick={() => setFilterCategory('')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.wine, fontWeight: 700, padding: 0 }}>✕</button>
+                </span>
+              )}
+              {(filterMinPrice || filterMaxPrice) && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: colors.roseSoft, color: colors.wine, padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}>
+                  Rs. {filterMinPrice || '0'}–{filterMaxPrice || '∞'}
+                  <button onClick={() => { setFilterMinPrice(''); setFilterMaxPrice(''); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.wine, fontWeight: 700, padding: 0 }}>✕</button>
+                </span>
+              )}
+              {(filterStartDate || filterEndDate) && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: colors.roseSoft, color: colors.wine, padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}>
+                  {filterStartDate || '…'} → {filterEndDate || '…'}
+                  <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: colors.wine, fontWeight: 700, padding: 0 }}>✕</button>
+                </span>
+              )}
+              <button onClick={clearFilters} style={{ background: 'transparent', border: 'none', color: colors.muted, fontSize: '12px', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>Clear all</button>
+            </div>
+          )}
+          </>
         )}
 
         {loading && <p style={{ color: colors.muted }}>Loading events...</p>}
@@ -529,6 +944,7 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
                     event={rec.event}
                     reason={rec.reason}
                     onRegister={handleReserve}
+                    currentUser={currentUser}
                   />
                 ))}
               </div>
@@ -545,7 +961,7 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
             )}
             <div style={{ display: 'grid', gap: '26px', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
               {filteredEvents.map((event) => (
-                <EventCard key={event.id || event.eventId} event={event} onRegister={handleReserve} />
+                <EventCard key={event.id || event.eventId} event={event} onRegister={handleReserve} currentUser={currentUser} />
               ))}
             </div>
           </>
@@ -555,7 +971,7 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
       {reserveModalEvent && (() => {
         const modalPrice = reserveModalEvent.price ?? reserveModalEvent.Price;
         const modalIsFree = !modalPrice || modalPrice <= 0;
-        const canConfirm = modalIsFree || paymentMethod.trim();
+        const canConfirm = modalIsFree || isCardDetailsValid(cardNumber, cardCvv, cardExpiry);
         return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(45,35,38,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
           <div style={{ background: colors.card, borderRadius: '18px', padding: '30px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}>
@@ -581,16 +997,16 @@ function AttendeePortal({ currentUser, setCurrentUser }) {
                   </div>
                 )}
 
-                <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600, color: colors.ink }}>How will you pay?</p>
-                <input
-                  type="text"
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  placeholder="e.g. Bank Card, EasyPaisa, JazzCash, Cash on Delivery..."
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', border: `1.5px solid ${colors.roseSoft}`, outline: 'none', fontSize: '14px', color: colors.ink, marginBottom: '10px' }}
+                <CardPaymentFields
+                  cardNumber={cardNumber}
+                  cvv={cardCvv}
+                  expiry={cardExpiry}
+                  onCardNumberChange={setCardNumber}
+                  onCvvChange={setCardCvv}
+                  onExpiryChange={setCardExpiry}
                 />
                 <p style={{ margin: '0 0 24px 0', fontSize: '12px', color: colors.muted }}>
-                  This just tells the organiser how you'll pay — your seat is confirmed once they verify the payment was actually received.
+                  This is a mock card entry — no bank account or wallet is ever charged or accessed. Your seat is confirmed once the organiser verifies your payment was actually received.
                 </p>
               </>
             )}
@@ -628,6 +1044,9 @@ function CreateEventView() {
   const [unlimitedCapacity, setUnlimitedCapacity] = useState(false);
   const [price, setPrice] = useState('');
   const [paymentInstructions, setPaymentInstructions] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState('');
   const [category, setCategory] = useState('Conference');
   const [groups, setGroups] = useState([]);
   const [groupId, setGroupId] = useState('');
@@ -640,6 +1059,22 @@ function CreateEventView() {
   useEffect(() => {
     groupService.getMyGroups().then(setGroups).catch(() => {});
   }, []);
+
+  const handleImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageError('');
+    setUploadingImage(true);
+    try {
+      const relativeUrl = await imageService.uploadImage(file);
+      setImageUrl(relativeUrl);
+    } catch (err) {
+      console.error(err);
+      setImageError('Failed to upload picture. Please try again.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -655,6 +1090,7 @@ function CreateEventView() {
         capacity: unlimitedCapacity ? UNLIMITED_CAPACITY : (capacity ? parseInt(capacity, 10) : 100),
         price: price ? parseFloat(price) : 0,
         paymentInstructions: paymentInstructions.trim() || null,
+        imageUrl: imageUrl || null,
         groupId: groupId ? parseInt(groupId, 10) : null,
         category,
         startDateTime: startDateTime ? new Date(startDateTime).toISOString() : new Date().toISOString(),
@@ -765,6 +1201,16 @@ function CreateEventView() {
             />
           </div>
 
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Event Picture</label>
+            {imageUrl && (
+              <img src={imageService.resolveImageUrl(imageUrl)} alt="Event preview" style={{ width: '100%', maxHeight: '160px', objectFit: 'cover', borderRadius: '10px', marginBottom: '8px' }} />
+            )}
+            <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} style={{ width: '100%' }} />
+            {uploadingImage && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: colors.muted }}>Uploading...</p>}
+            {imageError && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#b3261e' }}>{imageError}</p>}
+          </div>
+
           <div style={{ display: 'flex', gap: '10px' }}>
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Start Date & Time</label>
@@ -785,6 +1231,255 @@ function CreateEventView() {
   );
 }
 
+function ProfileView({ currentUser, setCurrentUser }) {
+  const [name, setName] = useState(currentUser?.name || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  if (!currentUser) {
+    return (
+      <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+        <GlobalStyle />
+        <div style={{ background: colors.card, padding: '40px', borderRadius: '20px', textAlign: 'center', border: `1px solid ${colors.roseSoft}` }}>
+          <p style={{ color: colors.muted, marginBottom: '16px' }}>Please log in to view your profile.</p>
+          <Link to="/login" style={{ color: colors.wine, fontWeight: 600, textDecoration: 'none' }}>Log In</Link>
+        </div>
+      </div>
+    );
+  }
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await authService.updateProfile(name.trim(), phone.trim() || null);
+      setCurrentUser(updated);
+      setMessage('Personal information updated.');
+    } catch (err) {
+      setError(err.response?.data || 'Failed to update profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', padding: '40px 24px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: '480px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h2 style={{ fontFamily: fontDisplay, color: colors.wine, margin: 0, fontSize: '26px' }}>Personal Information</h2>
+          <Link to="/events" style={{ color: colors.muted, textDecoration: 'none', fontSize: '14px', fontWeight: 600 }}>← Back</Link>
+        </div>
+        <div style={{ background: colors.card, padding: '30px', borderRadius: '18px', border: `1px solid ${colors.roseSoft}` }}>
+          {message && <div style={{ background: '#DCFCE7', color: '#166534', padding: '12px', borderRadius: '8px', fontSize: '13px', marginBottom: '18px' }}>{message}</div>}
+          {error && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '12px', borderRadius: '8px', fontSize: '13px', marginBottom: '18px' }}>{typeof error === 'string' ? error : 'Failed to update profile.'}</div>}
+          <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Email</label>
+              <input type="email" value={currentUser.email || ''} disabled style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', background: '#F3F3F3', color: colors.muted }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Full Name *</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} required style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Phone</label>
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 03XX-XXXXXXX" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+            </div>
+            <button type="submit" disabled={saving} style={{ background: colors.wine, color: '#fff', border: 'none', padding: '14px', borderRadius: '10px', fontWeight: 600, cursor: 'pointer', marginTop: '6px' }}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SavedEventsView({ currentUser }) {
+  const [savedEvents, setSavedEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [booking, setBooking] = useState(false);
+  const [reserveModalEvent, setReserveModalEvent] = useState(null);
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+
+  const fetchSaved = () => {
+    savedEventsService.getMine()
+      .then((data) => { setSavedEvents(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (currentUser) fetchSaved();
+    else setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  const handleUnsaved = (eventId, isSaved) => {
+    if (!isSaved) {
+      setSavedEvents((prev) => prev.filter((e) => (e.id || e.eventId) !== eventId));
+    }
+  };
+
+  const handleReserve = (event) => {
+    setCardNumber('');
+    setCardCvv('');
+    setCardExpiry('');
+    setReserveModalEvent(event);
+  };
+
+  const confirmReservation = async () => {
+    const event = reserveModalEvent;
+    const eventId = event.id || event.eventId;
+    const title = event.title || event.name;
+    const price = event.price ?? event.Price;
+    const isFree = !price || price <= 0;
+
+    if (!isFree && !isCardDetailsValid(cardNumber, cardCvv, cardExpiry)) {
+      alert('Please enter a valid card number (12 or 16 digits), CVV (3 digits) and a non-expired MM/YY expiry.');
+      return;
+    }
+
+    setBooking(true);
+    try {
+      await bookingService.guestCheckout({
+        fullName: currentUser.name,
+        email: currentUser.email,
+        phone: '',
+        eventId,
+        quantity: 1,
+        cardNumber: isFree ? '' : cardNumber.slice(-4),
+        cardName: '',
+        cardExpiry: isFree ? '' : cardExpiry,
+        paymentMethod: isFree ? null : buildCardPaymentSummary(cardNumber, cardExpiry),
+      });
+
+      setReserveModalEvent(null);
+      if (isFree) {
+        alert(`Successfully reserved spot for: ${title}`);
+      } else {
+        alert(`Reservation submitted for: ${title}. Your payment is yet to be confirmed — the organiser will confirm it from their side, check My Bookings for status.`);
+      }
+    } catch (err) {
+      const msg = err.response?.data || 'Failed to reserve spot. Please try again.';
+      alert(typeof msg === 'string' ? msg : 'Failed to reserve spot. Please try again.');
+    } finally {
+      setBooking(false);
+    }
+  };
+
+  if (!currentUser) {
+    return (
+      <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+        <GlobalStyle />
+        <div style={{ background: colors.card, padding: '40px', borderRadius: '20px', textAlign: 'center', border: `1px solid ${colors.roseSoft}` }}>
+          <p style={{ color: colors.muted, marginBottom: '16px' }}>Please log in to view saved events.</p>
+          <Link to="/login" style={{ color: colors.wine, fontWeight: 600, textDecoration: 'none' }}>Log In</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ fontFamily: fontBody, background: colors.bg, minHeight: '100vh', padding: '40px 24px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h2 style={{ fontFamily: fontDisplay, color: colors.wine, margin: 0, fontSize: '28px' }}>🔖 Saved Events</h2>
+          <Link to="/events" style={{ color: colors.muted, textDecoration: 'none', fontSize: '14px', fontWeight: 600 }}>← Back</Link>
+        </div>
+        {loading && <p style={{ color: colors.muted }}>Loading...</p>}
+        {!loading && savedEvents.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', background: colors.card, borderRadius: '16px', border: `1px solid ${colors.roseSoft}` }}>
+            <p style={{ color: colors.muted, fontSize: '15px', margin: 0 }}>You haven't saved any events yet. Tap the bookmark icon on an event to save it here.</p>
+          </div>
+        )}
+        <div style={{ display: 'grid', gap: '26px', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+          {savedEvents.map((event) => (
+            <EventCard
+              key={event.id || event.eventId}
+              event={event}
+              currentUser={currentUser}
+              onRegister={handleReserve}
+              onSavedChange={handleUnsaved}
+            />
+          ))}
+        </div>
+      </div>
+
+      {reserveModalEvent && (() => {
+        const modalPrice = reserveModalEvent.price ?? reserveModalEvent.Price;
+        const modalIsFree = !modalPrice || modalPrice <= 0;
+        const canConfirm = modalIsFree || isCardDetailsValid(cardNumber, cardCvv, cardExpiry);
+        return (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(45,35,38,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: colors.card, borderRadius: '18px', padding: '30px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontFamily: fontDisplay, color: colors.wine, fontSize: '22px' }}>Confirm Reservation</h3>
+            <p style={{ margin: '0 0 20px 0', color: colors.muted, fontSize: '14px' }}>
+              {reserveModalEvent.title || reserveModalEvent.name}
+            </p>
+
+            {modalIsFree ? (
+              <div style={{ background: colors.roseSoft, borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+                <p style={{ margin: 0, fontSize: '13px', color: colors.ink }}>
+                  🎉 This event is free — no payment needed. Click Confirm to reserve your spot.
+                </p>
+              </div>
+            ) : (
+              <>
+                {(reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions) && (
+                  <div style={{ background: colors.roseSoft, borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+                    <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: colors.wine, letterSpacing: '0.3px' }}>HOW TO PAY THE ORGANISER</p>
+                    <p style={{ margin: 0, fontSize: '13px', color: colors.ink, whiteSpace: 'pre-wrap' }}>
+                      {reserveModalEvent.paymentInstructions || reserveModalEvent.PaymentInstructions}
+                    </p>
+                  </div>
+                )}
+
+                <CardPaymentFields
+                  cardNumber={cardNumber}
+                  cvv={cardCvv}
+                  expiry={cardExpiry}
+                  onCardNumberChange={setCardNumber}
+                  onCvvChange={setCardCvv}
+                  onExpiryChange={setCardExpiry}
+                />
+                <p style={{ margin: '0 0 24px 0', fontSize: '12px', color: colors.muted }}>
+                  This is a mock card entry — no bank account or wallet is ever charged or accessed. Your seat is confirmed once the organiser verifies your payment was actually received.
+                </p>
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setReserveModalEvent(null)}
+                disabled={booking}
+                style={{ flex: 1, background: '#E5E7EB', color: colors.ink, border: 'none', padding: '12px', borderRadius: '10px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmReservation}
+                disabled={booking || !canConfirm}
+                style={{ flex: 1, background: colors.wine, color: '#fff', border: 'none', padding: '12px', borderRadius: '10px', cursor: (booking || !canConfirm) ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: (booking || !canConfirm) ? 0.6 : 1 }}
+              >
+                {booking ? 'Confirming...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 function AdminPanel({ currentUser, setCurrentUser }) {
   const [events, setEvents] = useState([]);
   const [pastOrganizedEvents, setPastOrganizedEvents] = useState([]);
@@ -797,6 +1492,8 @@ function AdminPanel({ currentUser, setCurrentUser }) {
   const [editingEvent, setEditingEvent] = useState(null);
   const [panelTab, setPanelTab] = useState('upcoming'); // 'upcoming' | 'past' | 'payments' | 'groups'
   const [editGroups, setEditGroups] = useState([]);
+  const [uploadingEditImage, setUploadingEditImage] = useState(false);
+  const [editImageError, setEditImageError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -876,6 +1573,22 @@ function AdminPanel({ currentUser, setCurrentUser }) {
     }
   };
 
+  const handleEditImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEditImageError('');
+    setUploadingEditImage(true);
+    try {
+      const relativeUrl = await imageService.uploadImage(file);
+      setEditingEvent((prev) => (prev ? { ...prev, imageUrl: relativeUrl } : prev));
+    } catch (err) {
+      console.error(err);
+      setEditImageError('Failed to upload picture. Please try again.');
+    } finally {
+      setUploadingEditImage(false);
+    }
+  };
+
   const handleStartEditing = (event) => {
     const formatLocalDateTime = (dateStr) => {
       if (!dateStr) return '';
@@ -896,6 +1609,7 @@ function AdminPanel({ currentUser, setCurrentUser }) {
       paymentInstructions: event.paymentInstructions ?? event.PaymentInstructions ?? '',
       groupId: event.groupId ?? event.GroupId ?? '',
       category: event.category || event.Category || 'Other',
+      imageUrl: event.imageUrl ?? event.ImageUrl ?? '',
       startDateTime: formatLocalDateTime(event.startDateTime || event.StartDateTime),
       endDateTime: formatLocalDateTime(event.endDateTime || event.EndDateTime),
     });
@@ -914,6 +1628,7 @@ function AdminPanel({ currentUser, setCurrentUser }) {
         capacity: editingEvent.unlimitedCapacity ? UNLIMITED_CAPACITY : (editingEvent.capacity ? parseInt(editingEvent.capacity, 10) : 100),
         price: editingEvent.price ? parseFloat(editingEvent.price) : 0,
         paymentInstructions: (editingEvent.paymentInstructions || '').trim() || null,
+        imageUrl: editingEvent.imageUrl || null,
         groupId: editingEvent.groupId ? parseInt(editingEvent.groupId, 10) : null,
         category: editingEvent.category,
         startDateTime: editingEvent.startDateTime ? new Date(editingEvent.startDateTime).toISOString() : new Date().toISOString(),
@@ -1057,6 +1772,16 @@ function AdminPanel({ currentUser, setCurrentUser }) {
                 />
               </div>
 
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Event Picture</label>
+                {editingEvent.imageUrl && (
+                  <img src={imageService.resolveImageUrl(editingEvent.imageUrl)} alt="Event preview" style={{ width: '100%', maxHeight: '160px', objectFit: 'cover', borderRadius: '10px', marginBottom: '8px' }} />
+                )}
+                <input type="file" accept="image/*" onChange={handleEditImageChange} disabled={uploadingEditImage} style={{ width: '100%' }} />
+                {uploadingEditImage && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: colors.muted }}>Uploading...</p>}
+                {editImageError && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#b3261e' }}>{editImageError}</p>}
+              </div>
+
               <div style={{ display: 'flex', gap: '10px' }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Start Date & Time</label>
@@ -1093,6 +1818,7 @@ function AdminPanel({ currentUser, setCurrentUser }) {
               { key: 'past', label: 'Past Events' },
               { key: 'payments', label: `Pending Payments${pendingPayments.length ? ` (${pendingPayments.length})` : ''}` },
               { key: 'groups', label: 'Groups' },
+              ...((currentUser.roles || []).includes('Organizer') ? [{ key: 'aboutus', label: 'About Us' }] : []),
             ].map((t) => (
               <button
                 key={t.key}
@@ -1170,6 +1896,8 @@ function AdminPanel({ currentUser, setCurrentUser }) {
           )}
 
           {panelTab === 'groups' && <GroupsPanel />}
+
+          {panelTab === 'aboutus' && <OrganizerAboutUsPanel currentUser={currentUser} />}
         </div>
       </div>
     </div>
@@ -1189,25 +1917,238 @@ function ManagedEventRow({ event, groups, onEdit, onDelete }) {
   const org = event.organizer || event.Organizer;
   const groupId = event.groupId ?? event.GroupId;
   const group = groupId ? (groups || []).find((g) => g.id === groupId) : null;
+  const imageUrl = imageService.resolveImageUrl(event.imageUrl || event.ImageUrl);
+  const startDateTime = event.startDateTime || event.StartDateTime;
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg }}>
-      <div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '4px' }}>
-          <h4 style={{ margin: 0, fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{event.title || event.name}</h4>
-          {org && <span style={{ fontSize: '11px', background: colors.roseSoft, color: colors.wine, padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>{org}</span>}
-          {groupId && (
-            <span style={{ fontSize: '11px', background: colors.teal, color: '#fff', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
-              🔒 {group ? group.name : 'Restricted'}
-            </span>
-          )}
-          <EventRatingBadge eventId={eventId} />
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg, gap: '16px' }}>
+      <div style={{ display: 'flex', gap: '14px', alignItems: 'center', minWidth: 0 }}>
+        {imageUrl && (
+          <img src={imageUrl} alt={event.title || event.name} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '8px', flexShrink: 0 }} />
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap' }}>
+            <h4 style={{ margin: 0, fontSize: '16px', color: colors.ink, fontFamily: fontDisplay }}>{event.title || event.name}</h4>
+            {org && <span style={{ fontSize: '11px', background: colors.roseSoft, color: colors.wine, padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>{org}</span>}
+            {groupId && (
+              <span style={{ fontSize: '11px', background: colors.teal, color: '#fff', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                🔒 {group ? group.name : 'Restricted'}
+              </span>
+            )}
+            <EventRatingBadge eventId={eventId} />
+          </div>
+          <p style={{ margin: '0 0 2px 0', fontSize: '12px', color: colors.muted, fontWeight: 600 }}>🕒 {formatEventDateTime(startDateTime)}</p>
+          <p style={{ margin: 0, fontSize: '13px', color: colors.muted }}>{event.description}</p>
         </div>
-        <p style={{ margin: 0, fontSize: '13px', color: colors.muted }}>{event.description}</p>
       </div>
-      <div style={{ display: 'flex', gap: '10px' }}>
+      <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
         <button onClick={() => onEdit(event)} style={{ background: colors.teal, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Edit</button>
         <button onClick={() => onDelete(eventId)} style={{ background: '#b3261e', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Delete</button>
       </div>
+    </div>
+  );
+}
+
+function OrganizerAboutUsPanel({ currentUser }) {
+  const [aboutUs, setAboutUs] = useState('');
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingBio, setSavingBio] = useState(false);
+  const [bioMessage, setBioMessage] = useState('');
+  const [memberForm, setMemberForm] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [savingMember, setSavingMember] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const organizerId = currentUser.userId;
+
+  const fetchProfile = () => {
+    organizerProfileService.getProfile(organizerId)
+      .then((data) => {
+        setAboutUs(data.aboutUs || '');
+        setTeamMembers((data.teamMembers || []).slice().sort((a, b) => a.displayOrder - b.displayOrder));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchProfile(); }, []);
+
+  const handleSaveBio = async (e) => {
+    e.preventDefault();
+    setSavingBio(true);
+    setBioMessage('');
+    try {
+      await organizerProfileService.updateAboutUs(aboutUs.trim() || null);
+      setBioMessage('Bio saved.');
+    } catch (err) {
+      setBioMessage('Failed to save bio. Please try again.');
+    } finally {
+      setSavingBio(false);
+    }
+  };
+
+  const openAddMember = () => setMemberForm({ name: '', title: '', photoUrl: '' });
+  const openEditMember = (m) => setMemberForm({ id: m.id, name: m.name, title: m.title, photoUrl: m.photoUrl || '' });
+  const closeMemberForm = () => setMemberForm(null);
+
+  const handleMemberPhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const url = await imageService.uploadImage(file);
+      setMemberForm((prev) => (prev ? { ...prev, photoUrl: url } : prev));
+    } catch (err) {
+      alert('Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleSaveMember = async (e) => {
+    e.preventDefault();
+    setSavingMember(true);
+    try {
+      const existing = memberForm.id ? teamMembers.find((m) => m.id === memberForm.id) : null;
+      const payload = {
+        name: memberForm.name.trim(),
+        title: memberForm.title.trim(),
+        photoUrl: memberForm.photoUrl || null,
+        displayOrder: existing ? existing.displayOrder : teamMembers.length,
+      };
+      if (memberForm.id) {
+        await organizerProfileService.updateTeamMember(memberForm.id, payload);
+      } else {
+        await organizerProfileService.addTeamMember(payload);
+      }
+      closeMemberForm();
+      fetchProfile();
+    } catch (err) {
+      alert('Failed to save team member. Please try again.');
+    } finally {
+      setSavingMember(false);
+    }
+  };
+
+  const handleDeleteMember = async (id) => {
+    if (!window.confirm('Remove this team member?')) return;
+    setDeletingId(id);
+    try {
+      await organizerProfileService.deleteTeamMember(id);
+      fetchProfile();
+    } catch (err) {
+      alert('Failed to delete team member. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const moveMember = async (index, direction) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= teamMembers.length) return;
+    const reordered = [...teamMembers];
+    [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
+    setTeamMembers(reordered);
+    try {
+      await Promise.all(reordered.map((m, i) =>
+        organizerProfileService.updateTeamMember(m.id, { name: m.name, title: m.title, photoUrl: m.photoUrl || null, displayOrder: i })
+      ));
+      fetchProfile();
+    } catch (err) {
+      fetchProfile();
+    }
+  };
+
+  if (loading) return <p style={{ color: colors.muted }}>Loading...</p>;
+
+  return (
+    <div>
+      <h3 style={{ margin: '0 0 14px 0', fontFamily: fontDisplay, color: colors.wine, fontSize: '18px' }}>Public Bio</h3>
+      <form onSubmit={handleSaveBio} style={{ marginBottom: '30px' }}>
+        <textarea
+          value={aboutUs}
+          onChange={(e) => setAboutUs(e.target.value)}
+          rows={4}
+          placeholder="Tell attendees about your organization..."
+          style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none', fontFamily: fontBody, marginBottom: '10px' }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button type="submit" disabled={savingBio} style={{ background: colors.wine, color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+            {savingBio ? 'Saving...' : 'Save Bio'}
+          </button>
+          {bioMessage && <span style={{ fontSize: '13px', color: colors.muted }}>{bioMessage}</span>}
+        </div>
+      </form>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontFamily: fontDisplay, color: colors.wine, fontSize: '18px' }}>Leadership Team</h3>
+        <button onClick={openAddMember} style={{ background: colors.teal, color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>+ Add Member</button>
+      </div>
+
+      {teamMembers.length === 0 && <EmptyPanelState text="No team members added yet." />}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {teamMembers.map((m, i) => (
+          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 18px', border: `1px solid ${colors.roseSoft}`, borderRadius: '10px', background: colors.bg, flexWrap: 'wrap' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: colors.roseSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {m.photoUrl ? (
+                <img src={imageService.resolveImageUrl(m.photoUrl)} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span>👤</span>
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: '120px' }}>
+              <p style={{ margin: '0 0 2px 0', fontWeight: 700, color: colors.ink, fontSize: '14px' }}>{m.name}</p>
+              <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>{m.title}</p>
+            </div>
+            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+              <button onClick={() => moveMember(i, -1)} disabled={i === 0} style={{ background: '#F3EDEF', color: colors.ink, border: 'none', width: '30px', height: '30px', borderRadius: '6px', cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.5 : 1 }}>↑</button>
+              <button onClick={() => moveMember(i, 1)} disabled={i === teamMembers.length - 1} style={{ background: '#F3EDEF', color: colors.ink, border: 'none', width: '30px', height: '30px', borderRadius: '6px', cursor: i === teamMembers.length - 1 ? 'not-allowed' : 'pointer', opacity: i === teamMembers.length - 1 ? 0.5 : 1 }}>↓</button>
+              <button onClick={() => openEditMember(m)} style={{ background: colors.teal, color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Edit</button>
+              <button onClick={() => handleDeleteMember(m.id)} disabled={deletingId === m.id} style={{ background: '#b3261e', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {memberForm && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(45,35,38,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: colors.card, borderRadius: '18px', padding: '30px', width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontFamily: fontDisplay, color: colors.wine }}>{memberForm.id ? 'Edit' : 'Add'} Team Member</h3>
+            <form onSubmit={handleSaveMember} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <input
+                type="text"
+                placeholder="Name"
+                required
+                value={memberForm.name}
+                onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })}
+                style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }}
+              />
+              <input
+                type="text"
+                placeholder="Title (e.g. President)"
+                required
+                value={memberForm.title}
+                onChange={(e) => setMemberForm({ ...memberForm, title: e.target.value })}
+                style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }}
+              />
+              <div>
+                {memberForm.photoUrl && (
+                  <img src={imageService.resolveImageUrl(memberForm.photoUrl)} alt="" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '8px', display: 'block' }} />
+                )}
+                <input type="file" accept="image/*" onChange={handleMemberPhotoChange} disabled={uploadingPhoto} />
+                {uploadingPhoto && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: colors.muted }}>Uploading...</p>}
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="button" onClick={closeMemberForm} style={{ flex: 1, background: '#E5E7EB', color: colors.ink, border: 'none', padding: '12px', borderRadius: '10px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                <button type="submit" disabled={savingMember || uploadingPhoto} style={{ flex: 1, background: colors.wine, color: '#fff', border: 'none', padding: '12px', borderRadius: '10px', cursor: 'pointer', fontWeight: 600 }}>
+                  {savingMember ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1642,7 +2583,7 @@ function RateEventCard({ event, onSubmitted }) {
     <div style={{ background: colors.card, borderRadius: '16px', padding: '24px', border: `1px solid ${colors.roseSoft}`, marginBottom: '20px' }}>
       <h4 style={{ margin: '0 0 4px 0', fontFamily: fontDisplay, color: colors.ink, fontSize: '18px' }}>{event.title}</h4>
       <p style={{ margin: '0 0 16px 0', color: colors.muted, fontSize: '13px' }}>
-        Attended on {new Date(event.endDateTime).toLocaleDateString()}
+        Attended on {formatEventDateTime(event.endDateTime)}
       </p>
 
       <StarRating value={rating} onChange={setRating} />
@@ -1720,7 +2661,7 @@ function RateEventsView({ currentUser }) {
 function PastEventCard({ event, statusLabel, statusTone }) {
   const title = event.title || event.name;
   const rawDate = event.startDateTime || event.StartDateTime || event.date;
-  const dateStr = rawDate ? new Date(rawDate).toLocaleDateString() : 'TBA';
+  const dateStr = formatEventDateTime(rawDate);
   const organizer = event.organizer || event.Organizer || 'General Host';
   return (
     <div style={{ background: colors.card, borderRadius: '14px', padding: '18px 22px', border: `1px solid ${colors.roseSoft}`, marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -1841,11 +2782,15 @@ export default function App() {
         <Route path="/events" element={<AttendeePortal currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
         <Route path="/login" element={<Login setCurrentUser={setCurrentUser} />} />
         <Route path="/register" element={<Register setCurrentUser={setCurrentUser} />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin" element={<AdminPanel currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
         <Route path="/create-event" element={<CreateEventView />} />
         <Route path="/rate-events" element={<RateEventsView currentUser={currentUser} />} />
         <Route path="/my-bookings" element={<MyBookingsView currentUser={currentUser} />} />
         <Route path="/my-past-events" element={<PastEventsView currentUser={currentUser} />} />
+        <Route path="/profile" element={<ProfileView currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
+        <Route path="/saved-events" element={<SavedEventsView currentUser={currentUser} />} />
       </Routes>
     </Router>
   );

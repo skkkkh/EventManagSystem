@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace EventManagementSystem.Api.DTOs;
 
@@ -48,6 +48,41 @@ public class UpdateInterestsDto
     public string? Interests { get; set; }
 }
 
+// "Personal Information" — the fields a user can edit about themselves.
+// Email is deliberately not editable here (it's also the login username).
+public class UpdateProfileDto
+{
+    [Required]
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(20)]
+    public string? Phone { get; set; }
+}
+
+public class ForgotPasswordDto
+{
+    [Required]
+    [EmailAddress]
+    public string Email { get; set; } = string.Empty;
+}
+
+public class ResetPasswordDto
+{
+    [Required]
+    [EmailAddress]
+    public string Email { get; set; } = string.Empty;
+
+    // The reset code emailed by /auth/forgot-password (Identity's
+    // password-reset token, copy-pasted back by the user).
+    [Required]
+    public string Token { get; set; } = string.Empty;
+
+    [Required]
+    [MinLength(6)]
+    public string NewPassword { get; set; } = string.Empty;
+}
+
 public record AuthResponseDto(
     int UserId,
     string Name,
@@ -55,5 +90,6 @@ public record AuthResponseDto(
     IList<string> Roles,
     string Token,
     DateTime ExpiresAt,
-    string? Interests
+    string? Interests,
+    string? Phone
 );

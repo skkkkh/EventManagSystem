@@ -26,6 +26,12 @@ public class User : IdentityUser<int>
     [MaxLength(500)]
     public string? Interests { get; set; }
 
+    // Public "About Us" bio an Organizer writes about themselves/their
+    // society — who they are, what they do. Shown to attendees (e.g. from
+    // an event's detail page). Null/empty for attendees, who never write one.
+    [MaxLength(2000)]
+    public string? AboutUs { get; set; }
+
     // Salted hash of the user's identification number (CNIC/student ID/employee ID/etc.).
     // Verification-only — the raw value is never stored, so it can't be recovered or displayed.
     [MaxLength(500)]

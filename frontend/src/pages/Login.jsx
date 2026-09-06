@@ -54,6 +54,9 @@ function Login({ setCurrentUser }) {
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.ink, marginBottom: '6px' }}>Password</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.roseSoft}`, outline: 'none' }} />
+            <div style={{ textAlign: 'right', marginTop: '6px' }}>
+              <Link to="/forgot-password" style={{ color: colors.wine, textDecoration: 'none', fontSize: '12px', fontWeight: 600 }}>Forgot password?</Link>
+            </div>
           </div>
           <button type="submit" disabled={loading} style={{ background: colors.wine, color: '#fff', border: 'none', padding: '14px', borderRadius: '10px', fontWeight: 600, cursor: 'pointer', marginTop: '6px' }}>
             {loading ? 'Logging in...' : 'Log In'}

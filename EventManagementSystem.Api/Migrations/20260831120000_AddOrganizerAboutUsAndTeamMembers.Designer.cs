@@ -3,6 +3,7 @@ using System;
 using EventManagementSystem.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EventManagementSystem.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831120000_AddOrganizerAboutUsAndTeamMembers")]
+    partial class AddOrganizerAboutUsAndTeamMembers
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
@@ -421,31 +424,6 @@ namespace EventManagementSystem.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Reviews");
-                });
-
-            modelBuilder.Entity("EventManagementSystem.Api.Models.SavedEvent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("EventId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("SavedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EventId");
-
-                    b.HasIndex("UserId", "EventId")
-                        .IsUnique();
-
-                    b.ToTable("SavedEvents");
                 });
 
             modelBuilder.Entity("EventManagementSystem.Api.Models.TicketType", b =>
@@ -864,25 +842,6 @@ namespace EventManagementSystem.Api.Migrations
                 });
 
             modelBuilder.Entity("EventManagementSystem.Api.Models.Review", b =>
-                {
-                    b.HasOne("EventManagementSystem.Api.Models.Event", "Event")
-                        .WithMany()
-                        .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("EventManagementSystem.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Event");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("EventManagementSystem.Api.Models.SavedEvent", b =>
                 {
                     b.HasOne("EventManagementSystem.Api.Models.Event", "Event")
                         .WithMany()

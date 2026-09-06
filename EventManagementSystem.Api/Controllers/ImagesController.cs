@@ -18,7 +18,7 @@ public class ImagesController : ControllerBase
     }
 
     [HttpPost("upload")]
-    [Authorize(Roles = "Organizer")]
+    [Authorize(Roles = "Admin,Organizer")]
     public async Task<IActionResult> Upload(IFormFile file)
     {
         try

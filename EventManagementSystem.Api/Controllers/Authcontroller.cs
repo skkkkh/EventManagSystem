@@ -1,4 +1,4 @@
-﻿using EventManagementSystem.Api.DTOs;
+using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
 using EventManagementSystem.Api.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -21,6 +21,7 @@ public class AuthController : ControllerBase
     private readonly RoleManager<IdentityRole<int>> _roleManager;
     private readonly IConfiguration _configuration;
     private readonly IIdentificationHasher _idHasher;
+    private readonly IEmailService _emailService;
 
     private static readonly string[] AllowedSelfRegisterRoles = { "Attendee", "Organizer" };
 
@@ -29,13 +30,15 @@ public class AuthController : ControllerBase
         SignInManager<User> signInManager,
         RoleManager<IdentityRole<int>> roleManager,
         IConfiguration configuration,
-        IIdentificationHasher idHasher)
+        IIdentificationHasher idHasher,
+        IEmailService emailService)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _roleManager = roleManager;
         _configuration = configuration;
         _idHasher = idHasher;
+        _emailService = emailService;
     }
 
     [HttpPost("register")]
@@ -117,6 +120,66 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
+    // "Personal Information" — lets the signed-in user edit their own name/phone.
+    [Authorize]
+    [HttpPut("profile")]
+    public async Task<ActionResult<AuthResponseDto>> UpdateProfile(UpdateProfileDto dto)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdClaim, out var userId)) return Unauthorized();
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null) return NotFound();
+
+        user.Name = dto.Name;
+        user.Phone = dto.Phone;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded) return BadRequest(result.Errors.Select(e => e.Description));
+
+        var response = await BuildAuthResponseAsync(user);
+        return Ok(response);
+    }
+
+    // Sends a password-reset token to the user's email. Always returns 200
+    // (even if the email isn't registered) so callers can't enumerate accounts.
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordDto dto)
+    {
+        var user = await _userManager.FindByEmailAsync(dto.Email);
+        if (user != null)
+        {
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var safeToken = System.Net.WebUtility.HtmlEncode(token);
+            var body = $"<p>Hi {System.Net.WebUtility.HtmlEncode(user.Name)},</p>" +
+                       "<p>Use the code below to reset your password. If you didn't request this, you can ignore this email.</p>" +
+                       $"<p style=\"font-family:monospace;font-size:14px;word-break:break-all;\">{safeToken}</p>";
+
+            try
+            {
+                await _emailService.SendAsync(user.Email ?? dto.Email, "Reset your password", body);
+            }
+            catch
+            {
+                // Swallow email delivery failures — don't leak whether the account exists,
+                // and don't fail the request just because outbound email is misconfigured.
+            }
+        }
+
+        return Ok(new { message = "If an account with that email exists, a password reset code has been sent." });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordDto dto)
+    {
+        var user = await _userManager.FindByEmailAsync(dto.Email);
+        if (user == null) return BadRequest("Invalid email or reset code.");
+
+        var result = await _userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
+        if (!result.Succeeded) return BadRequest(result.Errors.Select(e => e.Description));
+
+        return Ok(new { message = "Password has been reset. You can now log in with your new password." });
+    }
+
     [HttpPut("validate-organiser/{id:int}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> ValidateOrganiser(int id)
@@ -191,6 +254,7 @@ public class AuthController : ControllerBase
             roles,
             tokenString,
             expiresAt,
-            user.Interests);
+            user.Interests,
+            user.Phone);
     }
 }

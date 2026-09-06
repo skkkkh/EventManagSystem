@@ -68,6 +68,20 @@ public class AppDbContext
     public DbSet<Review> Reviews
         => Set<Review>();
 
+    // --------------------------------------------------
+    // Organizer "About Us" (public profile / leadership team)
+    // --------------------------------------------------
+
+    public DbSet<TeamMember> TeamMembers
+        => Set<TeamMember>();
+
+    // --------------------------------------------------
+    // Saved Events (bookmarks)
+    // --------------------------------------------------
+
+    public DbSet<SavedEvent> SavedEvents
+        => Set<SavedEvent>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -260,6 +274,36 @@ public class AppDbContext
 
         modelBuilder.Entity<Review>()
             .HasIndex(r => new { r.EventId, r.UserId })
+            .IsUnique();
+
+        // --------------------------------------------------
+        // User (Organizer) 1 --- * TeamMember
+        // --------------------------------------------------
+
+        modelBuilder.Entity<TeamMember>()
+            .HasOne(t => t.Organizer)
+            .WithMany()
+            .HasForeignKey(t => t.OrganizerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // --------------------------------------------------
+        // User 1 --- * SavedEvent, Event 1 --- * SavedEvent
+        // --------------------------------------------------
+
+        modelBuilder.Entity<SavedEvent>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SavedEvent>()
+            .HasOne(s => s.Event)
+            .WithMany()
+            .HasForeignKey(s => s.EventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SavedEvent>()
+            .HasIndex(s => new { s.UserId, s.EventId })
             .IsUnique();
     }
 }

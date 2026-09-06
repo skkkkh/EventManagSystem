@@ -131,12 +131,15 @@ public class EventsController : ControllerBase
         var oldCapacity = existing.Capacity;
 
         // Update only the fields the edit form actually sends — this preserves
-        // OrganizerId, ImageUrl, CreatedAt, etc. which the form doesn't
-        // include, so they no longer get silently wiped out on every edit.
+        // OrganizerId, CreatedAt, etc. which the form doesn't include, so
+        // they no longer get silently wiped out on every edit. ImageUrl IS
+        // copied here because the edit form now always sends the event's
+        // current (or newly uploaded) picture URL rather than omitting it.
         existing.Title = ev.Title;
         existing.Description = ev.Description;
         existing.Location = ev.Location;
         existing.Organizer = ev.Organizer;
+        existing.ImageUrl = ev.ImageUrl;
         existing.StartDateTime = ev.StartDateTime;
         existing.EndDateTime = ev.EndDateTime;
         existing.Capacity = ev.Capacity;

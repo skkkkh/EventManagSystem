@@ -1,6 +1,8 @@
+using EventManagementSystem.Api.CQRS.Groups;
 using EventManagementSystem.Api.DTOs;
 using EventManagementSystem.Api.Models;
 using EventManagementSystem.Api.Repositories;
+using MediatR;
 
 namespace EventManagementSystem.Api.Services;
 
@@ -17,12 +19,14 @@ public class RecommendationService : IRecommendationService
     private readonly IUnitOfWork _uow;
     private readonly IReasonEnhancer _reasonEnhancer;
     private readonly IInterestMatcher _interestMatcher;
+    private readonly IMediator _mediator;
 
-    public RecommendationService(IUnitOfWork uow, IReasonEnhancer reasonEnhancer, IInterestMatcher interestMatcher)
+    public RecommendationService(IUnitOfWork uow, IReasonEnhancer reasonEnhancer, IInterestMatcher interestMatcher, IMediator mediator)
     {
         _uow = uow;
         _reasonEnhancer = reasonEnhancer;
         _interestMatcher = interestMatcher;
+        _mediator = mediator;
     }
 
     private async Task<int> GetBookedCount(int eventId)
@@ -50,7 +54,17 @@ public class RecommendationService : IRecommendationService
         var user = await _uow.Users.GetByIdAsync(userId);
         if (user is null) return Array.Empty<RecommendationDto>();
 
-        var upcoming = (await _uow.Events.FindAsync(e => e.IsPublished && e.StartDateTime >= DateTime.UtcNow)).ToList();
+        var allUpcoming = (await _uow.Events.FindAsync(e => e.IsPublished && e.StartDateTime >= DateTime.UtcNow)).ToList();
+
+        // Group-restricted events (private to a specific group) must never be recommended
+        // to a user who isn't a member — mirrors EventsController.GetAll's CheckEventAccessQuery
+        // filtering, which this endpoint previously skipped entirely.
+        var upcoming = new List<Event>();
+        foreach (var e in allUpcoming)
+        {
+            if (await _mediator.Send(new CheckEventAccessQuery(e.Id, userId)))
+                upcoming.Add(e);
+        }
 
         var byUserId = await _uow.Registrations.FindAsync(r => r.UserId == userId);
         var byEmail = await _uow.Registrations.FindAsync(r => r.Email == user.Email);
